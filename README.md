@@ -8,6 +8,8 @@
 2. Codespace의 **Secrets**에 `NEXON_API_KEY`를 등록합니다.
 3. 준비가 끝나면 사이트가 자동으로 열립니다.
 
+기존 Codespace를 이미 만들어 둔 상태에서 설정이 바뀌었다면 명령 팔레트에서 **Codespaces: Rebuild Container**를 한 번 실행하세요. 재구축 후 `5173` 포트의 **Open in Browser**를 누르면 됩니다.
+
 > Codespaces Secret을 쓰지 않는 경우, 프로젝트 최상단에서 `.env.example`을 `.env`로 복사한 뒤 키를 넣어도 됩니다. `.env`는 GitHub에 올라가지 않습니다.
 
 ## 내 컴퓨터에서 실행

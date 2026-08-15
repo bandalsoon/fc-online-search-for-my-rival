@@ -7,6 +7,5 @@
     "3001": { "label": "API 서버", "onAutoForward": "silent" }
   },
   "postCreateCommand": "npm install",
-  "postAttachCommand": "npm run dev"
+  "postStartCommand": "nohup npm run dev > /tmp/fc-online-rival.log 2>&1 &"
 }
-
