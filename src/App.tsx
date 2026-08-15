@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, CalendarDays, Crosshair, Handshake, RefreshCw, Shield, Swords, Trophy } from "lucide-react";
+import { Activity, CalendarDays, Crosshair, Handshake, RefreshCw, Shield, Swords, UserRound } from "lucide-react";
 import type { Archive, Match, PlayerRanking } from "./types";
 
 const HOME = "새로운성연합";
 const RIVAL = "피버슛";
 const MATCHES_PER_PAGE = 20;
+type Side = "home" | "rival";
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 function MatchRow({ match }: { match: Match }) {
@@ -24,8 +25,19 @@ function MatchRow({ match }: { match: Match }) {
         <strong>{match.home.score}</strong><span className="text-slate-600">:</span><strong>{match.rival.score}</strong>
         <span className="truncate text-sm text-slate-300">{match.rival.nickname}</span>
       </div>
-      <div className="hidden text-right text-xs text-slate-500 md:block">슈팅 {match.home.shots} : {match.rival.shots}</div>
+      <div className="hidden text-right text-xs text-slate-500 md:block">슈팅 {match.home.shots} : {match.rival.shots}<br />유효 {match.home.effectiveShots} : {match.rival.effectiveShots}</div>
     </article>
+  );
+}
+
+function PlayerFace({ player }: { player: PlayerRanking }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [player.faceUrl]);
+  return (
+    <div className="player-face">
+      {!failed && <img src={player.faceUrl} alt="" loading="lazy" onError={() => setFailed(true)} />}
+      {failed && <UserRound size={27} aria-label="선수 이미지 없음" />}
+    </div>
   );
 }
 
@@ -35,16 +47,40 @@ function Ranking({ title, kicker, players, kind }: { title: string; kicker: stri
     <section className="ranking-section">
       <div className="panel-heading"><div><span className="section-kicker">{kicker}</span><h2>{title}</h2></div><Icon size={20} className="text-slate-600" /></div>
       {players.length ? <div className="space-y-1">{players.map((player, index) => (
-        <div className="scorer" key={`${player.spId}:${player.grade}`}>
+        <div className={`scorer scorer-${index + 1}`} key={`${player.spId}:${player.grade}`}>
           <span className={`rank rank-${index + 1}`}>{String(index + 1).padStart(2, "0")}</span>
+          <PlayerFace player={player} />
           <div className="min-w-0 flex-1">
-            <strong className="block truncate">{player.name}</strong>
-            <small className="player-meta"><span>{player.season}</span><span>+{player.grade}</span><span>{player.appearances}경기</span></small>
+            <div className="player-season-row">
+              {player.seasonIcon && <img src={player.seasonIcon} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+              <span className="season-badge">{player.season}</span><span className="grade-badge">+{player.grade}</span>
+            </div>
+            <strong className="player-name-small">{player.name}</strong>
+            <small className="player-record">{player.goals}골 · {player.assists}도움 · {player.appearances}경기</small>
           </div>
-          <div className="goals"><strong>{player[kind]}</strong><small>{kind.toUpperCase()}</small></div>
+          <div className="goals"><strong>{player[kind]}</strong><small>{kind.toUpperCase()}</small><em>{player.attackPoints} 공격P</em></div>
         </div>
       ))}</div> : <div className="empty small"><Icon size={28} /><p>표시할 기록이 없습니다.</p></div>}
     </section>
+  );
+}
+
+function UserCard({ side, selected, data, onSelect }: { side: Side; selected: boolean; data: Archive | null; onSelect: () => void }) {
+  const isHome = side === "home";
+  const nickname = data?.users[side].nickname || (isHome ? HOME : RIVAL);
+  const wins = data ? (isHome ? data.summary.homeWins : data.summary.rivalWins) : 0;
+  const losses = data ? (isHome ? data.summary.rivalWins : data.summary.homeWins) : 0;
+  const winRate = data ? (isHome ? data.summary.homeWinRate : data.summary.rivalWinRate) : 0;
+  const averageGoals = data ? (isHome ? data.summary.homeAverageGoals : data.summary.rivalAverageGoals) : 0;
+  const averageAgainst = data ? (isHome ? data.summary.homeAverageAgainst : data.summary.rivalAverageAgainst) : 0;
+  return (
+    <button className={`user-card ${isHome ? "home" : "rival"} ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected}>
+      <span className="eyebrow">{isHome ? "HOME" : "RIVAL"}</span>
+      <h1>{nickname}</h1>
+      <div className="user-record"><strong>{wins}승</strong><span>{data?.summary.draws ?? 0}무</span><span>{losses}패</span></div>
+      <div className="user-metrics"><span><b>{winRate.toFixed(1)}%</b> 승률</span><span><b>{averageGoals.toFixed(2)}</b> 평균 득점</span><span><b>{averageAgainst.toFixed(2)}</b> 평균 실점</span></div>
+      <small>{selected ? "선수 통계 보는 중" : "클릭해 선수 통계 보기"}</small>
+    </button>
   );
 }
 
@@ -54,6 +90,7 @@ function Skeleton() {
 
 export default function App() {
   const [data, setData] = useState<Archive | null>(null);
+  const [selected, setSelected] = useState<Side>("home");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(MATCHES_PER_PAGE);
@@ -72,57 +109,49 @@ export default function App() {
 
   useEffect(() => { void load(); }, [load]);
   const visibleMatches = useMemo(() => data?.matches.slice(0, visibleCount) || [], [data, visibleCount]);
+  const selectedStats = data?.playerStats[selected];
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#080b12] text-slate-100">
       <div className="glow glow-a" /><div className="glow glow-b" />
       <main className="relative mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-        <header className="mb-10 flex items-center justify-between">
-          <div className="flex items-center gap-3"><div className="logo"><Swords size={20} /></div><div><div className="text-sm font-bold tracking-[.22em]">RIVAL ARCHIVE</div><div className="mt-0.5 text-[11px] text-slate-500">FC ONLINE · PERSONAL RECORD</div></div></div>
+        <header className="mb-8 flex items-center justify-between">
+          <div className="flex items-center gap-3"><div className="logo"><Swords size={20} /></div><div><div className="text-sm font-bold tracking-[.22em]">RIVAL ARCHIVE</div><div className="mt-0.5 text-[11px] text-slate-500">FC ONLINE · FRIENDLY HISTORY</div></div></div>
           <button className="refresh" onClick={() => void load()} disabled={loading}><RefreshCw size={16} className={loading ? "animate-spin" : ""} /><span className="hidden sm:inline">새로고침</span></button>
         </header>
 
-        <section className="hero">
-          <div className="player-name"><span className="eyebrow">HOME</span><h1>{HOME}</h1></div>
-          <div className="versus"><span>VS</span><small>{data?.summary.total ?? "–"} MATCHES</small></div>
-          <div className="player-name text-right"><span className="eyebrow rival">RIVAL</span><h1>{RIVAL}</h1></div>
+        <section className="duel-grid">
+          <UserCard side="home" selected={selected === "home"} data={data} onSelect={() => setSelected("home")} />
+          <div className="versus-center"><span>VS</span><strong>{data?.summary.total ?? "–"}</strong><small>FRIENDLY MATCHES</small><em>{data?.summary.draws ?? "–"} DRAW</em></div>
+          <UserCard side="rival" selected={selected === "rival"} data={data} onSelect={() => setSelected("rival")} />
         </section>
 
         {error ? (
           <section className="error-card"><Shield size={28} /><div><h2>연결을 확인해 주세요</h2><p>{error}</p></div><button onClick={() => void load()}>다시 시도</button></section>
         ) : (
-          <>
-            <section className="record-strip">
-              <strong>{data?.summary.total ?? "–"}전</strong>
-              <span><b className="text-emerald-400">{data?.summary.wins ?? "–"}승</b> · {data?.summary.draws ?? "–"}무 · <b className="text-rose-400">{data?.summary.losses ?? "–"}패</b></span>
-              <small>조회된 전체 맞대결 기준</small>
-            </section>
-            <section className="stats-grid expanded">
-              <div className="stat-card featured"><div className="stat-icon"><Trophy size={19} /></div><span>승률</span><strong>{data?.summary.winRate ?? 0}<em>%</em></strong><p>WIN RATE</p></div>
-              <div className="stat-card"><span>평균 득점</span><strong className="text-emerald-400">{(data?.summary.averageGoalsFor ?? 0).toFixed(2)}</strong><p>GOALS FOR</p></div>
-              <div className="stat-card"><span>평균 실점</span><strong className="text-rose-400">{(data?.summary.averageGoalsAgainst ?? 0).toFixed(2)}</strong><p>GOALS AGAINST</p></div>
+          <div className="content-grid">
+            <section className="panel matches-panel">
+              <div className="panel-heading"><div><span className="section-kicker">HEAD TO HEAD</span><h2>친선 경기 기록</h2></div><Activity size={20} className="text-slate-600" /></div>
+              {loading ? <><p className="loading-copy">양쪽 계정의 전체 친선 기록을 확인하고 있습니다. 첫 조회는 시간이 걸릴 수 있어요.</p><Skeleton /></> : visibleMatches.length ? <>
+                <div>{visibleMatches.map((match) => <MatchRow key={match.id} match={match} />)}</div>
+                {data && visibleCount < data.matches.length && <button className="load-more" onClick={() => setVisibleCount((count) => count + MATCHES_PER_PAGE)}>더 보기 <span>{Math.min(visibleCount, data.matches.length)} / {data.matches.length}</span></button>}
+              </> : <div className="empty"><Swords size={32} /><strong>친선 맞대결 기록이 없습니다</strong><p>양쪽에서 찾은 {data?.scanInfo.uniqueMatchIds ?? 0}개의 고유 경기 기록을 확인했습니다.</p></div>}
             </section>
 
-            <div className="content-grid">
-              <section className="panel matches-panel">
-                <div className="panel-heading"><div><span className="section-kicker">HEAD TO HEAD</span><h2>맞대결 기록</h2></div><Activity size={20} className="text-slate-600" /></div>
-                {loading ? <><p className="loading-copy">전체 기록을 확인하고 있습니다. 첫 조회는 시간이 걸릴 수 있어요.</p><Skeleton /></> : visibleMatches.length ? <>
-                  <div>{visibleMatches.map((match) => <MatchRow key={match.id} match={match} />)}</div>
-                  {data && visibleCount < data.matches.length && <button className="load-more" onClick={() => setVisibleCount((count) => count + MATCHES_PER_PAGE)}>더 보기 <span>{visibleCount} / {data.matches.length}</span></button>}
-                </> : <div className="empty"><Swords size={32} /><strong>맞대결 기록이 없습니다</strong><p>{data?.scanned.totalMatchIds ?? 0}경기 · {data?.scanned.totalMatchTypes ?? 0}개 경기 종류를 확인했습니다.</p></div>}
-              </section>
-
-              <aside className="panel rankings-panel">
-                {loading ? <Skeleton /> : <>
-                  <Ranking title="득점 랭킹" kicker="TOP SCORERS" players={data?.topScorers || []} kind="goals" />
-                  <Ranking title="도움 랭킹" kicker="TOP ASSISTS" players={data?.topAssists || []} kind="assists" />
-                </>}
-              </aside>
-            </div>
-          </>
+            <aside className="panel rankings-panel">
+              <div className="selected-user-label"><span>PLAYER RECORDS</span><strong>{data?.users[selected].nickname || (selected === "home" ? HOME : RIVAL)}</strong></div>
+              {loading ? <Skeleton /> : <>
+                <Ranking title="득점왕" kicker="TOP SCORERS" players={selectedStats?.topScorers || []} kind="goals" />
+                <Ranking title="도움왕" kicker="TOP ASSISTS" players={selectedStats?.topAssists || []} kind="assists" />
+              </>}
+            </aside>
+          </div>
         )}
 
-        <footer><span>Data based on NEXON Open API</span><span>{data ? `${data.scanned.totalMatchTypes}개 경기 종류 · ${data.scanned.totalMatchIds.toLocaleString()}경기 확인 · 업데이트 ${formatDate(data.updatedAt)}` : "FC ONLINE 기록 보관소"}</span></footer>
+        {data && <section className="scan-info" aria-label="조회 진단 정보">
+          <span>친선 ID <b>{data.scanInfo.matchType}</b></span><span>{data.users.home.nickname} <b>{data.scanInfo.homeMatchIds.toLocaleString()}</b></span><span>{data.users.rival.nickname} <b>{data.scanInfo.rivalMatchIds.toLocaleString()}</b></span><span>고유 경기 <b>{data.scanInfo.uniqueMatchIds.toLocaleString()}</b></span><span>상세 성공/실패 <b>{data.scanInfo.detailSuccess}/{data.scanInfo.detailFailed}</b></span>
+        </section>}
+        <footer><span>Data based on NEXON Open API</span><span>{data ? `${data.summary.oldestMatchDate ? formatDate(data.summary.oldestMatchDate) : "기록 없음"}부터 · 업데이트 ${formatDate(data.updatedAt)}` : "FC ONLINE 친선 기록 보관소"}</span></footer>
       </main>
     </div>
   );
