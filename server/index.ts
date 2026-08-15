@@ -13,13 +13,23 @@ const DEFAULT_HOME = "새로운성연합";
 const DEFAULT_RIVAL = "피버슛";
 const API_KEY = process.env.NEXON_API_KEY?.trim();
 
+const MATCH_PAGE_SIZE = 100;
+// 한 요청이 무한정 길어지거나 Open API 호출 한도를 소진하지 않도록 둔 안전 상한이다.
+// 실제 조회는 각 매치 종류에서 빈 페이지가 나오면 즉시 끝나며, 종류별 유저당 최대 10,000건까지 확인한다.
+const MAX_MATCH_IDS_PER_TYPE = 10_000;
+const MATCH_DETAIL_CONCURRENCY = 4;
+const MATCH_TYPE_CONCURRENCY = 2;
+const METADATA_CACHE_MS = 24 * 60 * 60 * 1000;
+const ARCHIVE_CACHE_MS = 5 * 60 * 1000;
+
 app.use(compression());
 
 type NexonErrorBody = { error?: { name?: string; message?: string } };
 type PlayerStatus = { goal?: number; assist?: number; shoot?: number; effectiveShoot?: number };
 type MatchPlayer = { spId: number; spPosition?: number; spGrade?: number; status?: PlayerStatus };
 type MatchInfo = {
-  ouid: string; nickname: string;
+  ouid: string;
+  nickname: string;
   matchDetail?: { matchResult?: string; matchEndType?: number };
   shoot?: { goalTotal?: number; shootTotal?: number; effectiveShootTotal?: number };
   pass?: { passTry?: number; passSuccess?: number };
@@ -27,6 +37,24 @@ type MatchInfo = {
 };
 type MatchDetail = { matchId: string; matchDate: string; matchType: number; matchInfo: MatchInfo[] };
 type SpidMeta = { id: number; name: string };
+type SeasonMeta = { seasonId: number; className: string; seasonImg?: string };
+type MatchTypeMeta = { matchtype: number; desc: string };
+type TargetMatchType = { id: number; name: string };
+type PlayerRanking = {
+  spId: number;
+  name: string;
+  season: string;
+  grade: number;
+  goals: number;
+  assists: number;
+  appearances: number;
+  value: number | null;
+};
+type Metadata = {
+  playerNames: Map<number, string>;
+  seasons: Map<number, string>;
+  matchTypes: MatchTypeMeta[];
+};
 
 class AppError extends Error {
   constructor(public status: number, message: string, public code = "APP_ERROR") { super(message); }
@@ -61,15 +89,42 @@ async function nexon<T>(pathname: string, params: Record<string, string | number
   return response.json() as Promise<T>;
 }
 
-let spidCache: { expires: number; map: Map<number, string> } | undefined;
-async function getPlayerNames() {
-  if (spidCache && spidCache.expires > Date.now()) return spidCache.map;
-  const response = await fetch(`${META_ROOT}/spid.json`, { signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new AppError(502, "선수 이름 정보를 가져오지 못했습니다.", "META_ERROR");
-  const data = await response.json() as SpidMeta[];
-  const map = new Map(data.map((player) => [player.id, player.name]));
-  spidCache = { expires: Date.now() + 24 * 60 * 60 * 1000, map };
-  return map;
+async function fetchMeta<T>(filename: string): Promise<T> {
+  const response = await fetch(`${META_ROOT}/${filename}`, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`metadata ${filename}: ${response.status}`);
+  return response.json() as Promise<T>;
+}
+
+let metadataCache: { expires: number; data: Metadata } | undefined;
+async function getMetadata(): Promise<Metadata> {
+  if (metadataCache && metadataCache.expires > Date.now()) return metadataCache.data;
+  const [players, seasons, matchTypes] = await Promise.all([
+    fetchMeta<SpidMeta[]>("spid.json").catch(() => []),
+    fetchMeta<SeasonMeta[]>("seasonid.json").catch(() => []),
+    fetchMeta<MatchTypeMeta[]>("matchtype.json").catch(() => []),
+  ]);
+  const data = {
+    playerNames: new Map(players.map((player) => [player.id, player.name])),
+    seasons: new Map(seasons.map((season) => [season.seasonId, season.className])),
+    matchTypes,
+  };
+  metadataCache = { expires: Date.now() + METADATA_CACHE_MS, data };
+  return data;
+}
+
+function getTargetMatchTypes(meta: MatchTypeMeta[]): TargetMatchType[] {
+  const selected = meta.filter(({ desc }) => {
+    const isOneOnOne = /1\s*(on|대)\s*1|친선|공식\s*경기/i.test(desc);
+    const excluded = /감독|볼타|리그|스쿼드\s*배틀|아레나/i.test(desc);
+    return isOneOnOne && !excluded;
+  }).map(({ matchtype, desc }) => ({ id: matchtype, name: desc }));
+
+  // 메타데이터가 일시적으로 실패해도 친선(40), 공식경기(50), 공식 친선(60)은 계속 조회한다.
+  return selected.length ? selected : [
+    { id: 40, name: "클래식 1on1" },
+    { id: 50, name: "공식경기" },
+    { id: 60, name: "공식 친선" },
+  ];
 }
 
 async function pooledMap<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>) {
@@ -85,12 +140,126 @@ async function pooledMap<T, R>(items: T[], limit: number, mapper: (item: T) => P
   return results;
 }
 
+async function collectMatchIds(ouid: string, matchType: number) {
+  const ids: string[] = [];
+  for (let offset = 0; offset < MAX_MATCH_IDS_PER_TYPE; offset += MATCH_PAGE_SIZE) {
+    const page = await nexon<string[]>("/user/match", {
+      ouid,
+      matchtype: matchType,
+      offset,
+      limit: MATCH_PAGE_SIZE,
+    });
+    ids.push(...page);
+    if (page.length < MATCH_PAGE_SIZE) break;
+  }
+  return ids;
+}
+
 const querySchema = z.object({
   home: z.string().trim().min(1).max(20).default(DEFAULT_HOME),
   rival: z.string().trim().min(1).max(20).default(DEFAULT_RIVAL),
-  matchType: z.coerce.number().int().positive().default(50),
-  scan: z.coerce.number().int().min(20).max(300).default(100),
 });
+
+const archiveCache = new Map<string, { expires: number; value: Promise<unknown> }>();
+
+async function buildArchive(homeNickname: string, rivalNickname: string) {
+  const [homeId, rivalId, metadata] = await Promise.all([
+    nexon<{ ouid: string }>("/id", { nickname: homeNickname }),
+    nexon<{ ouid: string }>("/id", { nickname: rivalNickname }),
+    getMetadata(),
+  ]);
+  const targetTypes = getTargetMatchTypes(metadata.matchTypes);
+  const perType = await pooledMap(targetTypes, MATCH_TYPE_CONCURRENCY, async (matchType) => {
+    const [homeIds, rivalIds] = await Promise.all([
+      collectMatchIds(homeId.ouid, matchType.id),
+      collectMatchIds(rivalId.ouid, matchType.id),
+    ]);
+    const rivalSet = new Set(rivalIds);
+    return { matchType, homeIds, commonIds: homeIds.filter((id) => rivalSet.has(id)) };
+  });
+
+  const allHomeIds = new Set(perType.flatMap((row) => row.homeIds));
+  const commonIds = [...new Set(perType.flatMap((row) => row.commonIds))];
+  let failedDetails = 0;
+  const details = await pooledMap(commonIds, MATCH_DETAIL_CONCURRENCY, async (matchId) => {
+    try { return await nexon<MatchDetail>("/match-detail", { matchid: matchId }); }
+    catch { failedDetails++; return null; }
+  });
+  const headToHead = details.filter((match): match is MatchDetail => Boolean(
+    match && match.matchInfo.some((user) => user.ouid === rivalId.ouid) && match.matchInfo.some((user) => user.ouid === homeId.ouid)
+  )).sort((a, b) => Date.parse(b.matchDate) - Date.parse(a.matchDate));
+
+  const matchTypeNames = new Map(metadata.matchTypes.map((type) => [type.matchtype, type.desc]));
+  for (const type of targetTypes) if (!matchTypeNames.has(type.id)) matchTypeNames.set(type.id, type.name);
+  const players = new Map<string, PlayerRanking>();
+  let wins = 0, draws = 0, losses = 0, totalGoalsFor = 0, totalGoalsAgainst = 0;
+
+  const matches = headToHead.map((match) => {
+    const home = match.matchInfo.find((user) => user.ouid === homeId.ouid)!;
+    const rival = match.matchInfo.find((user) => user.ouid === rivalId.ouid)!;
+    const result = home.matchDetail?.matchResult === "승" ? "win" : home.matchDetail?.matchResult === "패" ? "loss" : "draw";
+    if (result === "win") wins++; else if (result === "loss") losses++; else draws++;
+    const homeScore = home.shoot?.goalTotal || 0;
+    const rivalScore = rival.shoot?.goalTotal || 0;
+    totalGoalsFor += homeScore;
+    totalGoalsAgainst += rivalScore;
+
+    for (const player of home.player || []) {
+      if (!player.status) continue;
+      const grade = player.spGrade || 1;
+      const key = `${player.spId}:${grade}`;
+      const seasonId = Math.floor(player.spId / 1_000_000);
+      const row = players.get(key) || {
+        spId: player.spId,
+        name: metadata.playerNames.get(player.spId) || `선수 ${player.spId}`,
+        season: metadata.seasons.get(seasonId) || "시즌 정보 없음",
+        grade,
+        goals: 0,
+        assists: 0,
+        appearances: 0,
+        value: null,
+      };
+      row.goals += player.status.goal || 0;
+      row.assists += player.status.assist || 0;
+      row.appearances++;
+      players.set(key, row);
+    }
+
+    return {
+      id: match.matchId,
+      date: match.matchDate,
+      matchType: match.matchType,
+      matchTypeName: matchTypeNames.get(match.matchType) || `경기 종류 ${match.matchType}`,
+      result,
+      home: { nickname: home.nickname, score: homeScore, shots: home.shoot?.shootTotal || 0, effectiveShots: home.shoot?.effectiveShootTotal || 0 },
+      rival: { nickname: rival.nickname, score: rivalScore, shots: rival.shoot?.shootTotal || 0, effectiveShots: rival.shoot?.effectiveShootTotal || 0 },
+    };
+  });
+
+  const total = matches.length;
+  const ranking = [...players.values()];
+  return {
+    users: { home: homeNickname, rival: rivalNickname },
+    summary: {
+      total, wins, draws, losses,
+      winRate: total ? Number(((wins / total) * 100).toFixed(1)) : 0,
+      totalGoalsFor,
+      totalGoalsAgainst,
+      averageGoalsFor: total ? Number((totalGoalsFor / total).toFixed(2)) : 0,
+      averageGoalsAgainst: total ? Number((totalGoalsAgainst / total).toFixed(2)) : 0,
+    },
+    matches,
+    topScorers: [...ranking].sort((a, b) => b.goals - a.goals || b.appearances - a.appearances).slice(0, 8),
+    topAssists: [...ranking].sort((a, b) => b.assists - a.assists || b.appearances - a.appearances).slice(0, 8),
+    scanned: {
+      totalMatchIds: allHomeIds.size,
+      totalMatchTypes: targetTypes.length,
+      maxPerMatchType: MAX_MATCH_IDS_PER_TYPE,
+      failedDetails,
+    },
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, apiKeyConfigured: Boolean(API_KEY) }));
 
@@ -98,57 +267,15 @@ app.get("/api/archive", async (req, res, next) => {
   try {
     const query = querySchema.parse(req.query);
     if (query.home === query.rival) throw new AppError(400, "서로 다른 두 닉네임을 입력해 주세요.", "SAME_NICKNAME");
-
-    const [homeId, rivalId] = await Promise.all([
-      nexon<{ ouid: string }>("/id", { nickname: query.home }),
-      nexon<{ ouid: string }>("/id", { nickname: query.rival }),
-    ]);
-    const matchIds: string[] = [];
-    for (let offset = 0; offset < query.scan; offset += 100) {
-      const page = await nexon<string[]>("/user/match", {
-        ouid: homeId.ouid, matchtype: query.matchType, offset, limit: Math.min(100, query.scan - offset),
-      });
-      matchIds.push(...page);
-      if (page.length < Math.min(100, query.scan - offset)) break;
+    const cacheKey = `${query.home}:${query.rival}`;
+    let cached = archiveCache.get(cacheKey);
+    if (!cached || cached.expires <= Date.now()) {
+      const value = buildArchive(query.home, query.rival);
+      cached = { expires: Date.now() + ARCHIVE_CACHE_MS, value };
+      archiveCache.set(cacheKey, cached);
+      value.catch(() => archiveCache.delete(cacheKey));
     }
-
-    const details = await pooledMap(matchIds, 6, (matchId) =>
-      nexon<MatchDetail>("/match-detail", { matchid: matchId }).catch(() => null)
-    );
-    const headToHead = details.filter((match): match is MatchDetail => Boolean(
-      match && match.matchInfo.some((user) => user.ouid === rivalId.ouid) && match.matchInfo.some((user) => user.ouid === homeId.ouid)
-    ));
-    const playerNames = await getPlayerNames();
-    const scorers = new Map<number, { spId: number; name: string; goals: number; appearances: number }>();
-    let wins = 0, draws = 0, losses = 0;
-
-    const matches = headToHead.map((match) => {
-      const home = match.matchInfo.find((user) => user.ouid === homeId.ouid)!;
-      const rival = match.matchInfo.find((user) => user.ouid === rivalId.ouid)!;
-      const result = home.matchDetail?.matchResult === "승" ? "win" : home.matchDetail?.matchResult === "패" ? "loss" : "draw";
-      if (result === "win") wins++; else if (result === "loss") losses++; else draws++;
-      for (const player of home.player || []) {
-        if (!player.status) continue;
-        const row = scorers.get(player.spId) || { spId: player.spId, name: playerNames.get(player.spId) || `선수 ${player.spId}`, goals: 0, appearances: 0 };
-        row.goals += player.status.goal || 0;
-        row.appearances++;
-        scorers.set(player.spId, row);
-      }
-      return {
-        id: match.matchId, date: match.matchDate, result,
-        home: { nickname: home.nickname, score: home.shoot?.goalTotal || 0, shots: home.shoot?.shootTotal || 0, effectiveShots: home.shoot?.effectiveShootTotal || 0 },
-        rival: { nickname: rival.nickname, score: rival.shoot?.goalTotal || 0, shots: rival.shoot?.shootTotal || 0, effectiveShots: rival.shoot?.effectiveShootTotal || 0 },
-      };
-    });
-
-    res.set("Cache-Control", "private, max-age=60").json({
-      users: { home: query.home, rival: query.rival },
-      summary: { total: matches.length, wins, draws, losses, winRate: matches.length ? Math.round((wins / matches.length) * 100) : 0 },
-      matches,
-      topScorers: [...scorers.values()].sort((a, b) => b.goals - a.goals || b.appearances - a.appearances).slice(0, 8),
-      scanned: matchIds.length,
-      updatedAt: new Date().toISOString(),
-    });
+    res.set("Cache-Control", "private, max-age=60").json(await cached.value);
   } catch (error) { next(error); }
 });
 
