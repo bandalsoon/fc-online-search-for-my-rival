@@ -28,3 +28,17 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+      - name: Server health check
+        run: |
+          pnpm start > /tmp/fc-online-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:3001/api/health | grep -q '"ok":true'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fc-online-server.log
+          exit 1
+
