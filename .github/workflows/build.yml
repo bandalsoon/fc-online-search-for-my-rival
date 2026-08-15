@@ -24,6 +24,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Verify official friendly match metadata
+        run: |
+          curl --fail --silent https://open.api.nexon.com/static/fconline/meta/matchtype.json \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).filter(x=>/친선|1on1/i.test(x.desc))))"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
