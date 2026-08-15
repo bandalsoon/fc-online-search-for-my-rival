@@ -1,0 +1,12 @@
+{
+  "name": "FC ONLINE Rival Archive",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "forwardPorts": [5173, 3001],
+  "portsAttributes": {
+    "5173": { "label": "FC ONLINE 아카이브", "onAutoForward": "openPreview" },
+    "3001": { "label": "API 서버", "onAutoForward": "silent" }
+  },
+  "postCreateCommand": "npm install",
+  "postAttachCommand": "npm run dev"
+}
+
