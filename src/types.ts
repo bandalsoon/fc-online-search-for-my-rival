@@ -26,32 +26,37 @@ export type PlayerRanking = {
 
 export type UserRankings = { topScorers: PlayerRanking[]; topAssists: PlayerRanking[] };
 
+export type ArchiveSummary = {
+  total: number;
+  homeWins: number;
+  draws: number;
+  rivalWins: number;
+  homeWinRate: number;
+  rivalWinRate: number;
+  homeGoals: number;
+  rivalGoals: number;
+  totalGoals: number;
+  homeAverageGoals: number;
+  homeAverageAgainst: number;
+  rivalAverageGoals: number;
+  rivalAverageAgainst: number;
+  oldestMatchDate: string | null;
+  latestMatchDate: string | null;
+};
+
 export type Archive = {
   users: {
     home: { nickname: string; ouid: string };
     rival: { nickname: string; ouid: string };
   };
-  summary: {
-    total: number;
-    homeWins: number;
-    draws: number;
-    rivalWins: number;
-    homeWinRate: number;
-    rivalWinRate: number;
-    homeGoals: number;
-    rivalGoals: number;
-    homeAverageGoals: number;
-    homeAverageAgainst: number;
-    rivalAverageGoals: number;
-    rivalAverageAgainst: number;
-    oldestMatchDate: string | null;
-    latestMatchDate: string | null;
-  };
+  matchTypes: Array<{ id: number; name: string; count: number }>;
+  summary: ArchiveSummary;
+  summariesByMatchType: Record<string, ArchiveSummary>;
   playerStats: { home: UserRankings; rival: UserRankings };
+  playerStatsByMatchType: Record<string, { home: UserRankings; rival: UserRankings }>;
   matches: Match[];
   scanInfo: {
-    matchType: number;
-    matchTypeName: string;
+    targetMatchTypes: Array<{ id: number; name: string }>;
     homeMatchIds: number;
     rivalMatchIds: number;
     combinedMatchIds: number;
@@ -62,9 +67,23 @@ export type Archive = {
     headToHeadMatches: number;
     homePages: number;
     rivalPages: number;
+    homeOldestMatchDate: string | null;
+    rivalOldestMatchDate: string | null;
     homeSafetyCapReached: boolean;
     rivalSafetyCapReached: boolean;
     maxPerUser: number;
+    byMatchType: Array<{
+      id: number;
+      name: string;
+      homeMatchIds: number;
+      rivalMatchIds: number;
+      homePages: number;
+      rivalPages: number;
+      homeEndOffset: number;
+      rivalEndOffset: number;
+      homeSafetyCapReached: boolean;
+      rivalSafetyCapReached: boolean;
+    }>;
   };
   updatedAt: string;
 };

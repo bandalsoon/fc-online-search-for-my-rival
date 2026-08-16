@@ -1,4 +1,4 @@
-import { AppError, DEFAULT_HOME, DEFAULT_RIVAL, FRIENDLY_MATCH_TYPE, getArchive } from "../server/archive.js";
+import { AppError, DEFAULT_HOME, DEFAULT_RIVAL, getArchive } from "../server/archive.js";
 
 interface Env {
   NEXON_API_KEY?: string;
@@ -16,7 +16,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/health") {
-      return json({ ok: true, apiKeyConfigured: Boolean(env.NEXON_API_KEY?.trim()), friendlyMatchType: FRIENDLY_MATCH_TYPE });
+      return json({
+        ok: true,
+        apiKeyConfigured: Boolean(env.NEXON_API_KEY?.trim()),
+        includedFriendlyModes: ["클래식 1on1", "공식 친선"],
+        managerModeExcluded: true,
+      });
     }
     if (url.pathname === "/api/archive") {
       try {
