@@ -60,6 +60,8 @@ npm run dev
 
 Cloudflare Workers에서 프론트엔드 정적 파일과 `/api` 백엔드를 같은 HTTPS 주소로 제공합니다. 배포 환경에는 암호화된 Secret으로 `NEXON_API_KEY`를 설정하고, 빌드 명령은 `npm run build`, 배포 명령은 `npx wrangler deploy`를 사용합니다. API 키는 React 번들에 포함되지 않습니다.
 
+- 서비스: <https://fc-online-rival-archive.rhrjsals0103.workers.dev>
+
 ## 향후 v2
 
 - 과거 닉네임 수동 등록과 기록 통합
