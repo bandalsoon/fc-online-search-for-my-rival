@@ -1,6 +1,6 @@
 const API_ROOT = "https://open.api.nexon.com/fconline/v1";
 const META_ROOT = "https://open.api.nexon.com/static/fconline/meta";
-const IMAGE_ROOT = "https://open.api.nexon.com/live/externalAssets/common/players";
+const IMAGE_ROOT = "https://fco.dn.nexoncdn.co.kr/live/externalAssets/common/players";
 
 export const DEFAULT_HOME = "새로운성연합";
 export const DEFAULT_RIVAL = "피버슛";
