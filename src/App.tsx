@@ -31,12 +31,13 @@ function MatchRow({ match }: { match: Match }) {
 }
 
 function PlayerFace({ player }: { player: PlayerRanking }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [player.faceUrl]);
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const sources = [player.faceUrl, player.actionFaceUrl].filter(Boolean);
+  useEffect(() => setSourceIndex(0), [player.faceUrl, player.actionFaceUrl]);
   return (
     <div className="player-face">
-      {!failed && <img src={player.faceUrl} alt="" loading="lazy" onError={() => setFailed(true)} />}
-      {failed && <UserRound size={27} aria-label="선수 이미지 없음" />}
+      {sourceIndex < sources.length && <img src={sources[sourceIndex]} alt="" loading="lazy" onError={() => setSourceIndex((index) => index + 1)} />}
+      {sourceIndex >= sources.length && <UserRound size={27} aria-label="선수 이미지 없음" />}
     </div>
   );
 }
@@ -148,9 +149,18 @@ export default function App() {
           </div>
         )}
 
-        {data && <section className="scan-info" aria-label="조회 진단 정보">
-          <span>친선 ID <b>{data.scanInfo.matchType}</b></span><span>{data.users.home.nickname} <b>{data.scanInfo.homeMatchIds.toLocaleString()}</b></span><span>{data.users.rival.nickname} <b>{data.scanInfo.rivalMatchIds.toLocaleString()}</b></span><span>고유 경기 <b>{data.scanInfo.uniqueMatchIds.toLocaleString()}</b></span><span>상세 성공/실패 <b>{data.scanInfo.detailSuccess}/{data.scanInfo.detailFailed}</b></span>
-        </section>}
+        {data && <details className="scan-info" aria-label="조회 진단 정보">
+          <summary>데이터 정보 · Match Type {data.scanInfo.matchType}</summary>
+          <div>
+            <span>{data.users.home.nickname} <b>{data.scanInfo.homeMatchIds.toLocaleString()}</b> ({data.scanInfo.homePages}p)</span>
+            <span>{data.users.rival.nickname} <b>{data.scanInfo.rivalMatchIds.toLocaleString()}</b> ({data.scanInfo.rivalPages}p)</span>
+            <span>합계/중복 <b>{data.scanInfo.combinedMatchIds.toLocaleString()} / {data.scanInfo.duplicateMatchIds.toLocaleString()}</b></span>
+            <span>고유 경기 <b>{data.scanInfo.uniqueMatchIds.toLocaleString()}</b></span>
+            <span>상세 성공/실패 <b>{data.scanInfo.detailSuccess}/{data.scanInfo.detailFailed}</b></span>
+            <span>맞대결 <b>{data.scanInfo.headToHeadMatches}</b></span>
+            {(data.scanInfo.homeSafetyCapReached || data.scanInfo.rivalSafetyCapReached) && <span className="text-amber-300">더 오래된 기록이 있을 가능성이 있으나 안전상한에 도달함</span>}
+          </div>
+        </details>}
         <footer><span>Data based on NEXON Open API</span><span>{data ? `${data.summary.oldestMatchDate ? formatDate(data.summary.oldestMatchDate) : "기록 없음"}부터 · 업데이트 ${formatDate(data.updatedAt)}` : "FC ONLINE 친선 기록 보관소"}</span></footer>
       </main>
     </div>

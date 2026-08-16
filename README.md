@@ -56,6 +56,10 @@ npm run dev
 
 이 프로젝트의 “전체 기록”은 Nexon Open API가 현재 반환하는 범위 내의 최대 기록입니다. API가 반환하지 않는 오래된 경기, 과거 닉네임이나 과거 OUID의 경기는 코드만으로 복구할 수 없습니다. 데이터 갱신 시점에 따라 최근 경기도 늦게 표시될 수 있습니다.
 
+## Cloudflare 배포
+
+Cloudflare Workers에서 프론트엔드 정적 파일과 `/api` 백엔드를 같은 HTTPS 주소로 제공합니다. 배포 환경에는 암호화된 Secret으로 `NEXON_API_KEY`를 설정하고, 빌드 명령은 `npm run build`, 배포 명령은 `npx wrangler deploy`를 사용합니다. API 키는 React 번들에 포함되지 않습니다.
+
 ## 향후 v2
 
 - 과거 닉네임 수동 등록과 기록 통합

@@ -20,6 +20,7 @@ export type PlayerRanking = {
   attackPointsPerMatch: number;
   appearances: number;
   faceUrl: string;
+  actionFaceUrl: string;
   value: number | null;
 };
 
@@ -53,10 +54,16 @@ export type Archive = {
     matchTypeName: string;
     homeMatchIds: number;
     rivalMatchIds: number;
+    combinedMatchIds: number;
+    duplicateMatchIds: number;
     uniqueMatchIds: number;
     detailSuccess: number;
     detailFailed: number;
     headToHeadMatches: number;
+    homePages: number;
+    rivalPages: number;
+    homeSafetyCapReached: boolean;
+    rivalSafetyCapReached: boolean;
     maxPerUser: number;
   };
   updatedAt: string;
