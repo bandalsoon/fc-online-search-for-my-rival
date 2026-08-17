@@ -25,6 +25,7 @@ export default {
         managerModeExcluded: true,
         databaseConfigured: Boolean(env.DB),
         version: "ULTIMATE v4",
+        timelineFieldVerified: true,
       });
     }
     if (url.pathname === "/api/archive") {
