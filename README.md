@@ -1,76 +1,57 @@
-# FC ONLINE Rival Archive
+# FC ONLINE Rival Archive — ULTIMATE v4
 
-FC ONLINE Rival Archive는 `새로운성연합`과 `피버슛`이 플레이한 1대1 친선경기를 Nexon Open API에서 현재 조회 가능한 범위까지 복원해, 맞대결과 선수 통계를 보여주는 개인 아카이브입니다.
+`새로운성연합`과 `피버슛`의 FC ONLINE 1대1 친선 기록을 Nexon Open API가 현재 제공하는 범위까지 복원하고, 발견한 맞대결을 Cloudflare D1에 영구 보관하는 개인 라이벌 아카이브입니다.
 
-## 기본 라이벌
+## 경기 범위
 
-- HOME: `새로운성연합`
-- RIVAL: `피버슛`
-- 대상 경기: 공식 메타데이터의 `클래식 1on1(40)`과 `공식 친선(60)`
-- 제외 경기: 공식경기, 리그 친선, 감독모드, 볼타 및 기타 모드
+- 공식 메타데이터로 확인한 `클래식 1on1(40)`과 `공식 친선(60)`
+- 감독모드(52), 공식경기, 리그, 볼타와 기타 모드는 제외
+- 양쪽 OUID의 Match ID를 끝까지 페이지네이션하고 합집합·중복 제거 후, Match Detail에 두 OUID가 함께 있는 경기만 채택
+- 계정별 10,000 Match ID 안전상한과 상세 조회 실패 격리 유지
 
-## 주요 기능
+## v4 화면
 
-- 두 닉네임의 OUID와 양쪽 1대1 친선 Match ID 전체 조회
-- 양쪽 Match ID 병합 및 `matchId` 기준 중복 제거
-- Match Detail에서 두 OUID의 동시 참여를 재검증
-- 총 맞대결, 양쪽 승률, 승·무·패, 총 득점, 평균 득점·실점
-- 닉네임 클릭으로 `새로운성연합`·`피버슛` 선수 통계 전환
-- 양쪽 각각 득점왕·도움왕 TOP 8
-- 선수 시즌 클래스, 강화 단계, 득점·도움·공격포인트·출전 수
-- Nexon 공식 `spId` 페이스온 이미지와 이미지 실패 fallback
-- 최근 경기부터 20경기씩 표시하는 더 보기
-- 전체 친선·클래식 1on1·공식 친선 유형 필터와 필터별 재계산 통계
-- Match ID와 상세 조회 성공·실패 수 진단 정보
-- 모바일 반응형 다크 Rival Archive UI
+- `개요`: 전체 상대전적과 최근 경기
+- `경기`: 최신순 목록, 클릭 시 실제 점유율·슈팅·유효 슈팅·패스, 득점 시간, 실제 평점 최고 선수, 당시 배치 공개
+- `선수`: 양쪽 득점왕·도움왕 TOP 8
+- `BEST XI`: 실제 `spPosition`별 출전과 공격·승리 기여를 계산한 포지션 스코어 선발, 실제 `spRating` 평균만 표시
+- `분석`: 득점·슈팅·패스 지표와 최대 점수차, 연승·무패·연패, 최빈 스코어, 선수 단일 경기 기록
 
-선수의 실시간 거래시장 가격은 현재 사용하는 공식 API에서 신뢰할 수 있게 제공되지 않으므로 표시하지 않으며, 임의 가격도 만들지 않습니다.
+가짜 평점, 추정 포지션, 임의 득점 시간, 가상 선수 가격은 만들지 않습니다. 선수 카드 구분키는 `spId + spGrade`입니다.
 
-## 데이터 조회 구조
+## 영구 아카이브
 
-1. 두 닉네임의 OUID를 조회합니다.
-2. 공식 Match Type 메타데이터를 확인하고, 두 계정의 클래식 1on1·공식 친선을 각 유형의 끝까지 조회합니다. 감독모드는 조회하지 않습니다.
-3. 양쪽 Match ID를 합치고 중복을 제거합니다.
-4. Match Detail을 제한된 동시 요청으로 조회합니다.
-5. 두 OUID가 함께 참여한 친선경기만 채택합니다.
-6. 채택된 전체 기록으로 양쪽 전적과 선수 통계를 계산합니다.
-
-Open API 호출 안정성을 위해 계정별 최대 10,000개의 친선 Match ID를 안전 상한으로 사용합니다. Match Detail과 완성된 아카이브는 서버 메모리에 캐시됩니다.
+Cloudflare D1의 `rivalry_matches` 테이블에 검증된 Match Detail 원본 JSON을 `matchId` 기본키로 저장합니다. 새로고침 시 DB 기록을 먼저 불러오고 Nexon API에서 새 ID만 상세 조회합니다. 메모리 캐시는 가속용이며 D1이 영구 기록의 기준입니다.
 
 ## 실행
 
-Node.js 20 이상에서 다음 명령을 실행합니다.
+기존 `.env`와 `NEXON_API_KEY`를 그대로 둔 상태에서 다음만 실행합니다.
 
 ```bash
 npm install
 npm run dev
 ```
 
-기존 `.env` 파일과 `NEXON_API_KEY` 설정은 그대로 사용하면 됩니다. API 키는 서버에서만 읽으며 프론트엔드와 GitHub 코드에 포함되지 않습니다.
+- Local: `http://localhost:5173`
+- 같은 Wi-Fi/LAN: 개발 서버가 표시하는 Network 주소
+- 프론트와 API 서버 모두 `0.0.0.0` 바인딩
 
-- Local: 현재 PC에서 `http://localhost:5173`으로 접속
-- Network: 같은 Wi-Fi/LAN에서는 개발 서버가 표시하는 Network 주소로 접속
-- Codespaces: `PORTS`에서 `5173` 포트를 브라우저로 열기
+`.env.example`의 이름을 바꾸거나 실제 키를 다시 입력할 필요가 없습니다. API 키는 서버/Cloudflare Secret에서만 읽으며 브라우저 번들, 로그, GitHub에 포함하지 않습니다.
 
-프론트와 API 서버 모두 `0.0.0.0`에 바인딩되어 네트워크 접속을 지원합니다.
+## 검증과 배포
+
+```bash
+npm run typecheck
+npm run build
+npx wrangler d1 migrations apply fc-online-rival-archive-db --remote
+npx wrangler deploy
+```
+
+현재 D1 스키마는 `migrations/0001_create_rivalry_matches.sql`과 동기화되어 있습니다. 배포 서비스: <https://fc-online-rival-archive.rhrjsals0103.workers.dev>
 
 ## 데이터 한계
 
-이 프로젝트의 “전체 기록”은 Nexon Open API가 현재 반환하는 범위 내의 최대 기록입니다. API가 반환하지 않는 오래된 경기, 과거 닉네임이나 과거 OUID의 경기는 코드만으로 복구할 수 없습니다. 데이터 갱신 시점에 따라 최근 경기도 늦게 표시될 수 있습니다.
-
-## Cloudflare 배포
-
-Cloudflare Workers에서 프론트엔드 정적 파일과 `/api` 백엔드를 같은 HTTPS 주소로 제공합니다. 배포 환경에는 암호화된 Secret으로 `NEXON_API_KEY`를 설정하고, 빌드 명령은 `npm run build`, 배포 명령은 `npx wrangler deploy`를 사용합니다. API 키는 React 번들에 포함되지 않습니다.
-
-- 서비스: <https://fc-online-rival-archive.rhrjsals0103.workers.dev>
-
-## 향후 기능
-
-- 과거 닉네임 수동 등록과 기록 통합
-- 발견한 경기의 데이터베이스 영구 저장
-- 연도·시즌별 HISTORY
-- 최장 연승·연패와 최대 점수차
-- 첫 번째·100번째·500번째 맞대결
-- 선수별 라이벌전 상세 기록과 스쿼드 역사
+“전체 기록”은 Nexon Open API가 현재 반환하는 범위의 전체입니다. API가 반환하지 않는 과거 경기·과거 OUID·과거 닉네임은 자동 복구할 수 없습니다. Nexon Open API 데이터 갱신 시점에 따라 최근 경기 반영이 지연될 수 있습니다.
 
 Data based on NEXON Open API
+

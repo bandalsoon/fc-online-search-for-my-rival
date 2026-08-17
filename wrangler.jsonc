@@ -8,5 +8,15 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
-  }
+  },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fc-online-rival-archive-db",
+      "database_id": "5d14a6e6-d3a9-4754-8855-841cb5e01030",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
+

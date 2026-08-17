@@ -6,456 +6,226 @@ export const DEFAULT_HOME = "새로운성연합";
 export const DEFAULT_RIVAL = "피버슛";
 export const FRIENDLY_MATCH_TYPE = 40;
 
-const MATCH_PAGE_SIZE = 100;
-const MAX_MATCH_IDS_PER_USER = 10_000;
-const MATCH_DETAIL_CONCURRENCY = 4;
-const REQUEST_TIMEOUT_MS = 15_000;
-const METADATA_CACHE_MS = 24 * 60 * 60 * 1000;
-const DETAIL_CACHE_MS = 24 * 60 * 60 * 1000;
-const ARCHIVE_CACHE_MS = 10 * 60 * 1000;
-const INCLUDED_FRIENDLY_NAMES = new Set(["클래식 1on1", "공식 친선"]);
+const PAGE_SIZE = 100;
+const MAX_IDS = 10_000;
+const CONCURRENCY = 4;
+const TIMEOUT = 15_000;
+const META_TTL = 86_400_000;
+const DETAIL_TTL = 86_400_000;
+const ARCHIVE_TTL = 600_000;
+const FRIENDLY_NAMES = new Set(["클래식 1on1", "공식 친선"]);
 
-type NexonErrorBody = { error?: { name?: string; message?: string } };
-type PlayerStatus = { goal?: number; assist?: number };
-type MatchPlayer = { spId: number; spGrade?: number; spPosition?: number; status?: PlayerStatus };
-type MatchInfo = {
-  ouid: string;
-  nickname: string;
-  matchDetail?: { matchResult?: string; matchEndType?: number };
-  shoot?: { goalTotal?: number; shootTotal?: number; effectiveShootTotal?: number };
+type Status = { goal?: number; assist?: number; spRating?: number; shoot?: number; effectiveShoot?: number; passTry?: number; passSuccess?: number };
+export type MatchPlayer = { spId: number; spGrade?: number; spPosition?: number; status?: Status };
+type ShootDetail = { goalTime?: number; result?: number; spId?: number; spGrade?: number; assist?: boolean; assistSpI?: number };
+export type MatchInfo = {
+  ouid: string; nickname: string;
+  matchDetail?: { matchResult?: string; matchEndType?: number; possession?: number };
+  shoot?: { goalTotal?: number; shootTotal?: number; effectiveShootTotal?: number; shootDetail?: ShootDetail[] };
+  pass?: { passTry?: number; passSuccess?: number };
   player?: MatchPlayer[];
 };
-type MatchDetail = { matchId: string; matchDate: string; matchType: number; matchInfo: MatchInfo[] };
-type SpidMeta = { id: number; name: string };
-type SeasonMeta = { seasonId: number; className: string; seasonImg?: string };
-type MatchTypeMeta = { matchtype: number; desc: string };
+export type MatchDetail = { matchId: string; matchDate: string; matchType: number; matchInfo: MatchInfo[] };
+type MatchType = { matchtype: number; desc: string };
 type MatchTypeOption = { id: number; name: string };
-type SeasonInfo = { name: string; icon: string | null };
-type Metadata = {
-  playerNames: Map<number, string>;
-  seasons: Map<number, SeasonInfo>;
-  matchTypes: Map<number, string>;
-  targetMatchTypes: MatchTypeOption[];
+type Meta = {
+  names: Map<number, string>; seasons: Map<number, { name: string; icon: string | null }>;
+  positions: Map<number, string>; targetTypes: MatchTypeOption[];
 };
 
-export type PlayerRanking = {
-  spId: number;
-  name: string;
-  season: string;
-  seasonIcon: string | null;
-  grade: number;
-  goals: number;
-  assists: number;
-  attackPoints: number;
-  attackPointsPerMatch: number;
-  appearances: number;
-  faceUrl: string;
-  actionFaceUrl: string;
-  value: null;
-};
-
-type ArchiveMatch = {
-  id: string;
-  date: string;
-  matchType: number;
-  matchTypeName: string;
-  result: "win" | "draw" | "loss";
-  home: { nickname: string; score: number; shots: number; effectiveShots: number };
-  rival: { nickname: string; score: number; shots: number; effectiveShots: number };
-};
-
-type ArchiveSummary = {
-  total: number;
-  homeWins: number;
-  draws: number;
-  rivalWins: number;
-  homeWinRate: number;
-  rivalWinRate: number;
-  homeGoals: number;
-  rivalGoals: number;
-  totalGoals: number;
-  homeAverageGoals: number;
-  homeAverageAgainst: number;
-  rivalAverageGoals: number;
-  rivalAverageAgainst: number;
-  oldestMatchDate: string | null;
-  latestMatchDate: string | null;
-};
-
-export class AppError extends Error {
-  constructor(public status: number, message: string, public code = "APP_ERROR") {
-    super(message);
-  }
+export interface ArchiveStore {
+  load(homeOuid: string, rivalOuid: string): Promise<MatchDetail[]>;
+  save(details: MatchDetail[], homeOuid: string, rivalOuid: string): Promise<number>;
+  count(homeOuid: string, rivalOuid: string): Promise<number>;
 }
 
-function explainNexonError(status: number, code?: string) {
+export type PlayerRanking = {
+  spId: number; name: string; season: string; seasonIcon: string | null; grade: number;
+  goals: number; assists: number; attackPoints: number; attackPointsPerMatch: number; appearances: number;
+  faceUrl: string; actionFaceUrl: string; value: null;
+};
+type LineupPlayer = PlayerRanking & { position: number; positionName: string; rating: number | null };
+type TeamMatch = { nickname: string; score: number; shots: number; effectiveShots: number; possession: number | null; passTry: number; passSuccess: number; formation: string; lineup: LineupPlayer[] };
+type ArchiveMatch = { id: string; date: string; matchType: number; result: "win" | "draw" | "loss"; home: TeamMatch; rival: TeamMatch; goals: Array<{ minute: number; side: "home" | "rival"; scorer: string; assist: string | null; score: string }>; mvp: { home: LineupPlayer | null; rival: LineupPlayer | null } };
+
+export class AppError extends Error {
+  constructor(public status: number, message: string, public code = "APP_ERROR") { super(message); }
+}
+
+function errorMessage(status: number, code?: string) {
   const messages: Record<string, string> = {
-    OPENAPI00002: "이 API 키에는 FC ONLINE 조회 권한이 없습니다.",
-    OPENAPI00003: "넥슨에서 유효하지 않은 사용자 식별자라고 응답했습니다.",
-    OPENAPI00004: "넥슨 API 요청값이 올바르지 않습니다.",
-    OPENAPI00005: "NEXON_API_KEY가 유효하지 않습니다.",
-    OPENAPI00007: "넥슨 API 호출 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.",
-    OPENAPI00009: "넥슨에서 데이터를 준비 중입니다. 잠시 후 다시 시도해 주세요.",
-    OPENAPI00010: "현재 FC ONLINE 점검 중입니다.",
-    OPENAPI00011: "현재 넥슨 Open API 점검 중입니다.",
+    OPENAPI00002: "이 API 키에는 FC ONLINE 조회 권한이 없습니다.", OPENAPI00003: "유효하지 않은 사용자입니다.",
+    OPENAPI00004: "넥슨 API 요청값이 올바르지 않습니다.", OPENAPI00005: "NEXON_API_KEY가 유효하지 않습니다.",
+    OPENAPI00007: "넥슨 API 호출 한도를 초과했습니다.", OPENAPI00009: "넥슨에서 데이터를 준비 중입니다.",
+    OPENAPI00010: "현재 FC ONLINE 점검 중입니다.", OPENAPI00011: "현재 넥슨 Open API 점검 중입니다.",
   };
   return (code && messages[code]) || `넥슨 API 요청에 실패했습니다. (${status})`;
 }
 
-async function nexon<T>(apiKey: string, pathname: string, params: Record<string, string | number> = {}): Promise<T> {
-  const key = apiKey.trim();
-  if (!key || key === "your_nexon_api_key_here") {
-    throw new AppError(503, "NEXON_API_KEY가 설정되지 않았습니다.", "API_KEY_MISSING");
-  }
-  const url = new URL(`${API_ROOT}${pathname}`);
-  Object.entries(params).forEach(([name, value]) => url.searchParams.set(name, String(value)));
+async function nexon<T>(key: string, path: string, params: Record<string, string | number> = {}): Promise<T> {
+  if (!key.trim() || key.trim() === "your_nexon_api_key_here") throw new AppError(503, "NEXON_API_KEY가 설정되지 않았습니다.", "API_KEY_MISSING");
+  const url = new URL(API_ROOT + path); Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: { "x-nxopen-api-key": key },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch {
-    throw new AppError(504, "넥슨 API 연결 시간이 초과되었습니다.", "NEXON_TIMEOUT");
-  }
+  try { response = await fetch(url, { headers: { "x-nxopen-api-key": key.trim() }, signal: AbortSignal.timeout(TIMEOUT) }); }
+  catch { throw new AppError(504, "넥슨 API 연결 시간이 초과되었습니다.", "NEXON_TIMEOUT"); }
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as NexonErrorBody;
-    const code = body.error?.name;
-    throw new AppError(response.status, explainNexonError(response.status, code), code || "NEXON_ERROR");
+    const body = await response.json().catch(() => ({})) as { error?: { name?: string } }; const code = body.error?.name;
+    throw new AppError(response.status, errorMessage(response.status, code), code || "NEXON_ERROR");
   }
   return response.json() as Promise<T>;
 }
 
-async function fetchMeta<T>(filename: string): Promise<T> {
-  const response = await fetch(`${META_ROOT}/${filename}`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`metadata ${filename}: ${response.status}`);
+async function fetchMeta<T>(name: string): Promise<T> {
+  const response = await fetch(`${META_ROOT}/${name}`, { signal: AbortSignal.timeout(TIMEOUT) });
+  if (!response.ok) throw new Error(`metadata ${name}: ${response.status}`);
   return response.json() as Promise<T>;
 }
 
-function isIncludedFriendlyType(type: MatchTypeMeta) {
-  // 감독모드(52), 공식경기, 리그, 볼타는 어떤 경우에도 이 아카이브에 넣지 않는다.
-  if (type.matchtype === 52 || /감독|공식경기|리그|볼타|AI|연습|훈련/.test(type.desc)) return false;
-  return INCLUDED_FRIENDLY_NAMES.has(type.desc.trim());
-}
-
-let metadataCache: { expires: number; data: Metadata } | undefined;
-async function getMetadata(): Promise<Metadata> {
-  if (metadataCache && metadataCache.expires > Date.now()) return metadataCache.data;
-  const matchTypes = await fetchMeta<MatchTypeMeta[]>("matchtype.json");
-  const targetMatchTypes = matchTypes
-    .filter(isIncludedFriendlyType)
-    .map((type) => ({ id: type.matchtype, name: type.desc.trim() }))
-    .sort((a, b) => a.id - b.id);
-  const classic = targetMatchTypes.find((type) => type.name === "클래식 1on1");
-  const officialFriendly = targetMatchTypes.find((type) => type.name === "공식 친선");
-  if (!classic || !officialFriendly) {
-    throw new AppError(503, "공식 메타데이터에서 1대1 친선 Match Type을 확인하지 못했습니다.", "MATCH_TYPE_MISMATCH");
-  }
-  const [players, seasons] = await Promise.all([
-    fetchMeta<SpidMeta[]>("spid.json").catch(() => []),
-    fetchMeta<SeasonMeta[]>("seasonid.json").catch(() => []),
+let metaCache: { until: number; data: Meta } | undefined;
+async function getMeta(): Promise<Meta> {
+  if (metaCache && metaCache.until > Date.now()) return metaCache.data;
+  const types = await fetchMeta<MatchType[]>("matchtype.json");
+  const targetTypes = types.filter((t) => t.matchtype !== 52 && !/감독|공식경기|리그|볼타|AI|연습|훈련/.test(t.desc) && FRIENDLY_NAMES.has(t.desc.trim()))
+    .map((t) => ({ id: t.matchtype, name: t.desc.trim() })).sort((a, b) => a.id - b.id);
+  if (!targetTypes.some((t) => t.name === "클래식 1on1") || !targetTypes.some((t) => t.name === "공식 친선")) throw new AppError(503, "공식 메타데이터에서 1대1 친선을 확인하지 못했습니다.", "MATCH_TYPE_MISMATCH");
+  const [players, seasons, positions] = await Promise.all([
+    fetchMeta<Array<{ id: number; name: string }>>("spid.json").catch(() => []),
+    fetchMeta<Array<{ seasonId: number; className: string; seasonImg?: string }>>("seasonid.json").catch(() => []),
+    fetchMeta<Array<{ spposition: number; desc: string }>>("spposition.json").catch(() => []),
   ]);
-  const data: Metadata = {
-    playerNames: new Map(players.map((player) => [player.id, player.name])),
-    seasons: new Map(seasons.map((season) => [season.seasonId, { name: season.className, icon: season.seasonImg || null }])),
-    matchTypes: new Map(matchTypes.map((type) => [type.matchtype, type.desc.trim()])),
-    targetMatchTypes,
-  };
-  metadataCache = { expires: Date.now() + METADATA_CACHE_MS, data };
-  return data;
+  const data: Meta = { names: new Map(players.map((p) => [p.id, p.name])), seasons: new Map(seasons.map((s) => [s.seasonId, { name: s.className, icon: s.seasonImg || null }])), positions: new Map(positions.map((p) => [p.spposition, p.desc])), targetTypes };
+  metaCache = { until: Date.now() + META_TTL, data }; return data;
 }
 
-async function pooledMap<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>) {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  async function worker() {
-    while (cursor < items.length) {
-      const index = cursor++;
-      results[index] = await mapper(items[index]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
+async function pool<T, R>(items: T[], mapper: (item: T) => Promise<R>) {
+  const output = new Array<R>(items.length); let cursor = 0;
+  async function worker() { while (cursor < items.length) { const index = cursor++; output[index] = await mapper(items[index]); } }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker)); return output;
 }
 
-type MatchTypeScan = MatchTypeOption & { ids: string[]; pages: number; endOffset: number; safetyCapReached: boolean };
-type AccountScan = { ids: string[]; pages: number; safetyCapReached: boolean; byMatchType: MatchTypeScan[] };
-
-async function collectMatchIds(apiKey: string, ouid: string, matchTypes: MatchTypeOption[]): Promise<AccountScan> {
-  const unique = new Set<string>();
-  const byMatchType: MatchTypeScan[] = [];
-  let totalPages = 0;
-  let safetyCapReached = false;
-
-  for (const matchType of matchTypes) {
-    const ids: string[] = [];
-    let pages = 0;
-    let endOffset = 0;
-    let typeSafetyCapReached = false;
-    for (let offset = 0; unique.size < MAX_MATCH_IDS_PER_USER; offset += MATCH_PAGE_SIZE) {
-      const remaining = MAX_MATCH_IDS_PER_USER - unique.size;
-      const limit = Math.min(MATCH_PAGE_SIZE, remaining);
-      const page = await nexon<string[]>(apiKey, "/user/match", {
-        ouid,
-        matchtype: matchType.id,
-        offset,
-        limit,
-      });
-      pages++;
-      totalPages++;
-      endOffset = offset;
-      for (const id of page) {
-        ids.push(id);
-        unique.add(id);
-      }
+type TypeScan = MatchTypeOption & { ids: string[]; pages: number; endOffset: number; safetyCapReached: boolean };
+async function collectIds(key: string, ouid: string, types: MatchTypeOption[]) {
+  const all = new Set<string>(); const byType: TypeScan[] = []; let pages = 0; let cap = false;
+  for (const type of types) {
+    const ids: string[] = []; let typePages = 0; let endOffset = 0; let typeCap = false;
+    for (let offset = 0; all.size < MAX_IDS; offset += PAGE_SIZE) {
+      const limit = Math.min(PAGE_SIZE, MAX_IDS - all.size);
+      const page = await nexon<string[]>(key, "/user/match", { ouid, matchtype: type.id, offset, limit });
+      pages++; typePages++; endOffset = offset; page.forEach((id) => { ids.push(id); all.add(id); });
       if (page.length < limit) break;
-      if (unique.size >= MAX_MATCH_IDS_PER_USER) {
-        typeSafetyCapReached = true;
-        safetyCapReached = true;
-        break;
-      }
+      if (all.size >= MAX_IDS) { cap = typeCap = true; break; }
     }
-    byMatchType.push({ ...matchType, ids: [...new Set(ids)], pages, endOffset, safetyCapReached: typeSafetyCapReached });
-    if (safetyCapReached) break;
+    byType.push({ ...type, ids: [...new Set(ids)], pages: typePages, endOffset, safetyCapReached: typeCap }); if (cap) break;
   }
-
-  return { ids: [...unique], pages: totalPages, safetyCapReached, byMatchType };
+  return { ids: [...all], pages, safetyCapReached: cap, byType };
 }
 
-const detailCache = new Map<string, { expires: number; value: Promise<MatchDetail> }>();
-function getMatchDetail(apiKey: string, matchId: string) {
-  const cached = detailCache.get(matchId);
-  if (cached && cached.expires > Date.now()) return cached.value;
-  const value = nexon<MatchDetail>(apiKey, "/match-detail", { matchid: matchId });
-  detailCache.set(matchId, { expires: Date.now() + DETAIL_CACHE_MS, value });
-  value.catch(() => detailCache.delete(matchId));
-  return value;
+const detailCache = new Map<string, { until: number; value: Promise<MatchDetail> }>();
+function detail(key: string, id: string) {
+  const cached = detailCache.get(id); if (cached && cached.until > Date.now()) return cached.value;
+  const value = nexon<MatchDetail>(key, "/match-detail", { matchid: id }); detailCache.set(id, { until: Date.now() + DETAIL_TTL, value }); value.catch(() => detailCache.delete(id)); return value;
 }
 
-function createPlayerRow(player: MatchPlayer, metadata: Metadata): PlayerRanking {
-  const seasonId = Math.floor(player.spId / 1_000_000);
-  const season = metadata.seasons.get(seasonId);
-  return {
-    spId: player.spId,
-    name: metadata.playerNames.get(player.spId) || `선수 ${player.spId}`,
-    season: season?.name || "시즌 정보 없음",
-    seasonIcon: season?.icon || null,
-    grade: player.spGrade || 1,
-    goals: 0,
-    assists: 0,
-    attackPoints: 0,
-    attackPointsPerMatch: 0,
-    appearances: 0,
-    faceUrl: `${IMAGE_ROOT}/p${player.spId}.png`,
-    actionFaceUrl: `${IMAGE_ROOT}Action/p${player.spId}.png`,
-    value: null,
-  };
+function playerBase(player: MatchPlayer, meta: Meta): PlayerRanking {
+  const season = meta.seasons.get(Math.floor(player.spId / 1_000_000));
+  return { spId: player.spId, name: meta.names.get(player.spId) || `선수 ${player.spId}`, season: season?.name || "시즌 정보 없음", seasonIcon: season?.icon || null,
+    grade: player.spGrade || 1, goals: 0, assists: 0, attackPoints: 0, attackPointsPerMatch: 0, appearances: 0,
+    faceUrl: `${IMAGE_ROOT}/p${player.spId}.png`, actionFaceUrl: `${IMAGE_ROOT}Action/p${player.spId}.png`, value: null };
 }
 
-function addPlayers(target: Map<string, PlayerRanking>, players: MatchPlayer[] | undefined, metadata: Metadata) {
-  for (const player of players || []) {
-    if (!player.status) continue;
-    const grade = player.spGrade || 1;
-    const key = `${player.spId}:${grade}`;
-    const row = target.get(key) || createPlayerRow(player, metadata);
-    row.goals += player.status.goal || 0;
-    row.assists += player.status.assist || 0;
-    row.appearances++;
-    row.attackPoints = row.goals + row.assists;
-    row.attackPointsPerMatch = Number((row.attackPoints / row.appearances).toFixed(2));
-    target.set(key, row);
+function lineupPlayer(player: MatchPlayer, meta: Meta): LineupPlayer {
+  const goals = player.status?.goal || 0; const assists = player.status?.assist || 0; const position = player.spPosition ?? 28;
+  return { ...playerBase(player, meta), goals, assists, attackPoints: goals + assists, attackPointsPerMatch: goals + assists, appearances: 1,
+    position, positionName: meta.positions.get(position) || "SUB", rating: typeof player.status?.spRating === "number" && player.status.spRating > 0 ? Number(player.status.spRating.toFixed(1)) : null };
+}
+
+function aggregate(target: Map<string, PlayerRanking>, players: MatchPlayer[] | undefined, meta: Meta) {
+  for (const p of players || []) {
+    if (!p.status) continue; const key = `${p.spId}:${p.spGrade || 1}`; const row = target.get(key) || playerBase(p, meta);
+    row.goals += p.status.goal || 0; row.assists += p.status.assist || 0; row.appearances++; row.attackPoints = row.goals + row.assists; row.attackPointsPerMatch = Number((row.attackPoints / row.appearances).toFixed(2)); target.set(key, row);
   }
 }
 
-function rankings(players: Map<string, PlayerRanking>) {
-  const rows = [...players.values()];
-  const tieBreak = (a: PlayerRanking, b: PlayerRanking) => b.attackPoints - a.attackPoints || b.appearances - a.appearances || a.spId - b.spId || a.grade - b.grade;
-  return {
-    topScorers: [...rows].sort((a, b) => b.goals - a.goals || tieBreak(a, b)).slice(0, 8),
-    topAssists: [...rows].sort((a, b) => b.assists - a.assists || tieBreak(a, b)).slice(0, 8),
-  };
+function ranking(map: Map<string, PlayerRanking>) {
+  const rows = [...map.values()]; const tie = (a: PlayerRanking, b: PlayerRanking) => b.attackPoints - a.attackPoints || b.appearances - a.appearances || a.spId - b.spId;
+  return { topScorers: [...rows].sort((a, b) => b.goals - a.goals || tie(a, b)).slice(0, 8), topAssists: [...rows].sort((a, b) => b.assists - a.assists || tie(a, b)).slice(0, 8) };
 }
 
-function emptySummary(): ArchiveSummary {
-  return {
-    total: 0, homeWins: 0, draws: 0, rivalWins: 0,
-    homeWinRate: 0, rivalWinRate: 0,
-    homeGoals: 0, rivalGoals: 0, totalGoals: 0,
-    homeAverageGoals: 0, homeAverageAgainst: 0,
-    rivalAverageGoals: 0, rivalAverageAgainst: 0,
-    oldestMatchDate: null, latestMatchDate: null,
-  };
+function formation(players: Array<{ spPosition?: number }> | undefined) {
+  const p = (players || []).map((x) => x.spPosition ?? 28).filter((x) => x < 28);
+  const counts = [p.filter((x) => x >= 1 && x <= 8).length, p.filter((x) => x >= 9 && x <= 19).length, p.filter((x) => x >= 20 && x <= 27).length];
+  return counts.every(Boolean) ? counts.join("-") : "실제 배치";
 }
 
-function buildArchiveSlice(details: MatchDetail[], homeOuid: string, rivalOuid: string, metadata: Metadata) {
-  const homePlayers = new Map<string, PlayerRanking>();
-  const rivalPlayers = new Map<string, PlayerRanking>();
-  const summary = emptySummary();
-  const matches: ArchiveMatch[] = [];
+function team(info: MatchInfo, meta: Meta): TeamMatch {
+  const lineup = (info.player || []).filter((p) => (p.spPosition ?? 28) < 28).map((p) => lineupPlayer(p, meta));
+  return { nickname: info.nickname, score: info.shoot?.goalTotal || 0, shots: info.shoot?.shootTotal || 0, effectiveShots: info.shoot?.effectiveShootTotal || 0,
+    possession: typeof info.matchDetail?.possession === "number" ? info.matchDetail.possession : null, passTry: info.pass?.passTry || 0, passSuccess: info.pass?.passSuccess || 0, formation: formation(info.player), lineup };
+}
 
+function result(home: MatchInfo, rival: MatchInfo): ArchiveMatch["result"] {
+  if (home.matchDetail?.matchResult === "승") return "win"; if (home.matchDetail?.matchResult === "패") return "loss";
+  const a = home.shoot?.goalTotal || 0; const b = rival.shoot?.goalTotal || 0; return a === b ? "draw" : a > b ? "win" : "loss";
+}
+
+function goalMinute(raw: number) { const unit = 2 ** 24; const segment = Math.floor(raw / unit); return Math.max(1, Math.floor((raw - segment * unit) / 60) + ([0, 45, 90, 105, 120][segment] || 0) + 1); }
+function goals(home: MatchInfo, rival: MatchInfo, meta: Meta) {
+  const raw = ([home, rival] as const).flatMap((info, i) => (info.shoot?.shootDetail || []).filter((s) => s.result === 3 && typeof s.goalTime === "number" && typeof s.spId === "number").map((shot) => ({ shot, side: (i ? "rival" : "home") as "home" | "rival" }))).sort((a, b) => a.shot.goalTime! - b.shot.goalTime!);
+  let a = 0; let b = 0; return raw.map(({ shot, side }) => { if (side === "home") a++; else b++; return { minute: goalMinute(shot.goalTime!), side, scorer: meta.names.get(shot.spId!) || `선수 ${shot.spId}`, assist: shot.assist && shot.assistSpI ? meta.names.get(shot.assistSpI) || `선수 ${shot.assistSpI}` : null, score: `${a}-${b}` }; });
+}
+
+function buildMatches(details: MatchDetail[], homeOuid: string, rivalOuid: string, meta: Meta) {
+  const homePlayers = new Map<string, PlayerRanking>(); const rivalPlayers = new Map<string, PlayerRanking>(); const matches: ArchiveMatch[] = [];
   for (const match of details) {
-    const home = match.matchInfo.find((user) => user.ouid === homeOuid);
-    const rival = match.matchInfo.find((user) => user.ouid === rivalOuid);
-    if (!home || !rival) continue;
-    const homeScore = home.shoot?.goalTotal || 0;
-    const rivalScore = rival.shoot?.goalTotal || 0;
-    const result: ArchiveMatch["result"] = home.matchDetail?.matchResult === "승"
-      ? "win"
-      : home.matchDetail?.matchResult === "패"
-        ? "loss"
-        : homeScore === rivalScore ? "draw" : homeScore > rivalScore ? "win" : "loss";
-    if (result === "win") summary.homeWins++;
-    else if (result === "loss") summary.rivalWins++;
-    else summary.draws++;
-    summary.homeGoals += homeScore;
-    summary.rivalGoals += rivalScore;
-    addPlayers(homePlayers, home.player, metadata);
-    addPlayers(rivalPlayers, rival.player, metadata);
-    matches.push({
-      id: match.matchId,
-      date: match.matchDate,
-      matchType: match.matchType,
-      matchTypeName: metadata.matchTypes.get(match.matchType) || `경기 유형 ${match.matchType}`,
-      result,
-      home: { nickname: home.nickname, score: homeScore, shots: home.shoot?.shootTotal || 0, effectiveShots: home.shoot?.effectiveShootTotal || 0 },
-      rival: { nickname: rival.nickname, score: rivalScore, shots: rival.shoot?.shootTotal || 0, effectiveShots: rival.shoot?.effectiveShootTotal || 0 },
-    });
+    const h = match.matchInfo.find((x) => x.ouid === homeOuid); const r = match.matchInfo.find((x) => x.ouid === rivalOuid); if (!h || !r) continue;
+    aggregate(homePlayers, h.player, meta); aggregate(rivalPlayers, r.player, meta); const home = team(h, meta); const rival = team(r, meta);
+    const best = (rows: LineupPlayer[]) => rows.filter((p) => p.rating !== null).sort((a, b) => (b.rating || 0) - (a.rating || 0))[0] || null;
+    matches.push({ id: match.matchId, date: match.matchDate, matchType: match.matchType, result: result(h, r), home, rival, goals: goals(h, r, meta), mvp: { home: best(home.lineup), rival: best(rival.lineup) } });
   }
-
   matches.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
-  summary.total = matches.length;
-  summary.totalGoals = summary.homeGoals + summary.rivalGoals;
-  summary.homeWinRate = summary.total ? Number(((summary.homeWins / summary.total) * 100).toFixed(1)) : 0;
-  summary.rivalWinRate = summary.total ? Number(((summary.rivalWins / summary.total) * 100).toFixed(1)) : 0;
-  summary.homeAverageGoals = summary.total ? Number((summary.homeGoals / summary.total).toFixed(2)) : 0;
-  summary.homeAverageAgainst = summary.total ? Number((summary.rivalGoals / summary.total).toFixed(2)) : 0;
-  summary.rivalAverageGoals = summary.total ? Number((summary.rivalGoals / summary.total).toFixed(2)) : 0;
-  summary.rivalAverageAgainst = summary.total ? Number((summary.homeGoals / summary.total).toFixed(2)) : 0;
-  summary.latestMatchDate = matches[0]?.date || null;
-  summary.oldestMatchDate = matches.at(-1)?.date || null;
-  return {
-    summary,
-    playerStats: { home: rankings(homePlayers), rival: rankings(rivalPlayers) },
-    matches,
-  };
+  const total = matches.length; const homeWins = matches.filter((m) => m.result === "win").length; const rivalWins = matches.filter((m) => m.result === "loss").length; const draws = total - homeWins - rivalWins;
+  const homeGoals = matches.reduce((n, m) => n + m.home.score, 0); const rivalGoals = matches.reduce((n, m) => n + m.rival.score, 0);
+  const summary = { total, homeWins, rivalWins, draws, homeWinRate: total ? Number((homeWins / total * 100).toFixed(1)) : 0, rivalWinRate: total ? Number((rivalWins / total * 100).toFixed(1)) : 0,
+    homeGoals, rivalGoals, totalGoals: homeGoals + rivalGoals, homeAverageGoals: total ? Number((homeGoals / total).toFixed(2)) : 0, homeAverageAgainst: total ? Number((rivalGoals / total).toFixed(2)) : 0,
+    rivalAverageGoals: total ? Number((rivalGoals / total).toFixed(2)) : 0, rivalAverageAgainst: total ? Number((homeGoals / total).toFixed(2)) : 0, oldestMatchDate: matches.at(-1)?.date || null, latestMatchDate: matches[0]?.date || null };
+  return { matches, summary, playerStats: { home: ranking(homePlayers), rival: ranking(rivalPlayers) } };
 }
 
-function oldestDateFor(ids: Set<string>, details: MatchDetail[]) {
-  const dates = details.filter((detail) => ids.has(detail.matchId)).map((detail) => Date.parse(detail.matchDate)).filter(Number.isFinite);
-  return dates.length ? new Date(Math.min(...dates)).toISOString() : null;
+type BestPlayer = LineupPlayer & { wins: number; positionScore: number; averageRating: number | null };
+function bestXi(details: MatchDetail[], ouid: string, meta: Meta) {
+  const forms = new Map<string, { count: number; positions: number[] }>();
+  for (const d of details) { const info = d.matchInfo.find((x) => x.ouid === ouid); if (!info) continue; const positions = (info.player || []).map((p) => p.spPosition ?? 28).filter((p) => p < 28).sort((a, b) => a - b); const key = positions.join(","); const f = forms.get(key) || { count: 0, positions }; f.count++; forms.set(key, f); }
+  const selected = [...forms.values()].sort((a, b) => b.count - a.count)[0] || { count: 0, positions: [] };
+  const players = selected.positions.map((position) => {
+    const candidates = new Map<string, { raw: MatchPlayer; apps: number; goals: number; assists: number; wins: number; ratings: number[] }>();
+    for (const d of details) { const info = d.matchInfo.find((x) => x.ouid === ouid); if (!info) continue; for (const p of info.player || []) { if ((p.spPosition ?? 28) !== position) continue; const key = `${p.spId}:${p.spGrade || 1}`; const c = candidates.get(key) || { raw: p, apps: 0, goals: 0, assists: 0, wins: 0, ratings: [] }; c.apps++; c.goals += p.status?.goal || 0; c.assists += p.status?.assist || 0; if (info.matchDetail?.matchResult === "승") c.wins++; if (p.status?.spRating && p.status.spRating > 0) c.ratings.push(p.status.spRating); candidates.set(key, c); } }
+    const rows = [...candidates.values()]; const maxApps = Math.max(1, ...rows.map((r) => r.apps)); const maxAttack = Math.max(1, ...rows.map((r) => r.goals + r.assists)); const role = position <= 8 ? .62 : position <= 19 ? .82 : 1;
+    return rows.map((r) => { const attack = r.goals + r.assists; const per = attack / r.apps; const sample = Math.min(1, r.apps / Math.max(3, selected.count * .35)); const score = ((r.apps / maxApps) * 35 + (attack / maxAttack) * 30 * role + Math.min(1, per / 1.5) * 25 * role + (r.wins / r.apps) * 10) * (.72 + .28 * sample); const base = lineupPlayer(r.raw, meta); const out: BestPlayer = { ...base, appearances: r.apps, goals: r.goals, assists: r.assists, attackPoints: attack, attackPointsPerMatch: Number(per.toFixed(2)), wins: r.wins, positionScore: Number(score.toFixed(2)), averageRating: r.ratings.length ? Number((r.ratings.reduce((a, b) => a + b, 0) / r.ratings.length).toFixed(1)) : null }; return out; }).sort((a, b) => b.positionScore - a.positionScore || b.appearances - a.appearances)[0] || null;
+  }).filter((p): p is BestPlayer => Boolean(p));
+  return { formation: formation(players.map((p) => ({ spPosition: p.position }))), sampleMatches: selected.count, players };
 }
 
-async function buildArchive(apiKey: string, homeNickname: string, rivalNickname: string) {
-  const [homeUser, rivalUser, metadata] = await Promise.all([
-    nexon<{ ouid: string }>(apiKey, "/id", { nickname: homeNickname }),
-    nexon<{ ouid: string }>(apiKey, "/id", { nickname: rivalNickname }),
-    getMetadata(),
-  ]);
-  const [homeScan, rivalScan] = await Promise.all([
-    collectMatchIds(apiKey, homeUser.ouid, metadata.targetMatchTypes),
-    collectMatchIds(apiKey, rivalUser.ouid, metadata.targetMatchTypes),
-  ]);
-  const combinedMatchIds = homeScan.ids.length + rivalScan.ids.length;
-  const uniqueIds = [...new Set([...homeScan.ids, ...rivalScan.ids])];
-  let detailSuccess = 0;
-  let detailFailed = 0;
-  const detailResults = await pooledMap(uniqueIds, MATCH_DETAIL_CONCURRENCY, async (matchId) => {
-    try {
-      const detail = await getMatchDetail(apiKey, matchId);
-      detailSuccess++;
-      return detail;
-    } catch {
-      detailFailed++;
-      return null;
-    }
-  });
-  const successfulDetails = detailResults.filter((match): match is MatchDetail => Boolean(match));
-  const targetIds = new Set(metadata.targetMatchTypes.map((type) => type.id));
-  const headToHead = successfulDetails.filter((match) =>
-    targetIds.has(match.matchType) &&
-    match.matchInfo.some((user) => user.ouid === homeUser.ouid) &&
-    match.matchInfo.some((user) => user.ouid === rivalUser.ouid)
-  );
-  const all = buildArchiveSlice(headToHead, homeUser.ouid, rivalUser.ouid, metadata);
-  const matchTypes = metadata.targetMatchTypes
-    .map((type) => ({ ...type, count: headToHead.filter((match) => match.matchType === type.id).length }))
-    .filter((type) => type.count > 0);
-  const summariesByMatchType: Record<string, ArchiveSummary> = {};
-  const playerStatsByMatchType: Record<string, ReturnType<typeof rankings> extends infer R ? { home: R; rival: R } : never> = {};
-  for (const type of matchTypes) {
-    const slice = buildArchiveSlice(headToHead.filter((match) => match.matchType === type.id), homeUser.ouid, rivalUser.ouid, metadata);
-    summariesByMatchType[String(type.id)] = slice.summary;
-    playerStatsByMatchType[String(type.id)] = slice.playerStats;
-  }
-  const homeIdSet = new Set(homeScan.ids);
-  const rivalIdSet = new Set(rivalScan.ids);
-  const byMatchType = metadata.targetMatchTypes.map((type) => {
-    const home = homeScan.byMatchType.find((row) => row.id === type.id);
-    const rival = rivalScan.byMatchType.find((row) => row.id === type.id);
-    return {
-      id: type.id,
-      name: type.name,
-      homeMatchIds: home?.ids.length || 0,
-      rivalMatchIds: rival?.ids.length || 0,
-      homePages: home?.pages || 0,
-      rivalPages: rival?.pages || 0,
-      homeEndOffset: home?.endOffset || 0,
-      rivalEndOffset: rival?.endOffset || 0,
-      homeSafetyCapReached: home?.safetyCapReached || false,
-      rivalSafetyCapReached: rival?.safetyCapReached || false,
-    };
-  });
-
-  return {
-    users: {
-      home: { nickname: homeNickname, ouid: homeUser.ouid },
-      rival: { nickname: rivalNickname, ouid: rivalUser.ouid },
-    },
-    matchTypes,
-    summary: all.summary,
-    summariesByMatchType,
-    playerStats: all.playerStats,
-    playerStatsByMatchType,
-    matches: all.matches,
-    scanInfo: {
-      targetMatchTypes: metadata.targetMatchTypes,
-      homeMatchIds: homeScan.ids.length,
-      rivalMatchIds: rivalScan.ids.length,
-      combinedMatchIds,
-      duplicateMatchIds: combinedMatchIds - uniqueIds.length,
-      uniqueMatchIds: uniqueIds.length,
-      detailSuccess,
-      detailFailed,
-      headToHeadMatches: all.summary.total,
-      homePages: homeScan.pages,
-      rivalPages: rivalScan.pages,
-      homeOldestMatchDate: oldestDateFor(homeIdSet, successfulDetails),
-      rivalOldestMatchDate: oldestDateFor(rivalIdSet, successfulDetails),
-      homeSafetyCapReached: homeScan.safetyCapReached,
-      rivalSafetyCapReached: rivalScan.safetyCapReached,
-      maxPerUser: MAX_MATCH_IDS_PER_USER,
-      byMatchType,
-    },
-    updatedAt: new Date().toISOString(),
-  };
+function pct(a: number, b: number) { return b ? Number((a / b * 100).toFixed(1)) : 0; }
+function analyze(matches: ArchiveMatch[], homeName: string, rivalName: string) {
+  const metrics = (side: "home" | "rival") => { const other = side === "home" ? "rival" : "home"; const rows = matches.map((m) => m[side]); const shots = rows.reduce((n, r) => n + r.shots, 0); const effective = rows.reduce((n, r) => n + r.effectiveShots, 0); const passTry = rows.reduce((n, r) => n + r.passTry, 0); const passSuccess = rows.reduce((n, r) => n + r.passSuccess, 0); const goals = rows.reduce((n, r) => n + r.score, 0); const conceded = matches.reduce((n, m) => n + m[other].score, 0); const oneGoal = matches.filter((m) => Math.abs(m.home.score - m.rival.score) === 1); const won = (m: ArchiveMatch) => side === "home" ? m.result === "win" : m.result === "loss"; return { goalsPerMatch: matches.length ? Number((goals / matches.length).toFixed(2)) : 0, concededPerMatch: matches.length ? Number((conceded / matches.length).toFixed(2)) : 0, shotsPerMatch: matches.length ? Number((shots / matches.length).toFixed(2)) : 0, shotAccuracy: pct(effective, shots), conversion: pct(goals, shots), passCompletion: pct(passSuccess, passTry), oneGoalWinRate: pct(oneGoal.filter(won).length, oneGoal.length), threePlusGoalRate: pct(rows.filter((r) => r.score >= 3).length, rows.length), scorelessRate: pct(rows.filter((r) => r.score === 0).length, rows.length) }; };
+  const chronological = [...matches].reverse(); const streak = (side: "home" | "rival", kind: "win" | "unbeaten" | "loss") => { let best = 0; let current = 0; for (const m of chronological) { const r = side === "home" ? m.result : m.result === "win" ? "loss" : m.result === "loss" ? "win" : "draw"; const ok = kind === "unbeaten" ? r !== "loss" : r === kind; current = ok ? current + 1 : 0; best = Math.max(best, current); } return best; }; const better = (kind: "win" | "unbeaten" | "loss") => { const h = streak("home", kind); const r = streak("rival", kind); return h >= r ? { owner: homeName, count: h } : { owner: rivalName, count: r }; };
+  const biggest = [...matches].sort((a, b) => Math.abs(b.home.score - b.rival.score) - Math.abs(a.home.score - a.rival.score))[0] || null; const highest = [...matches].sort((a, b) => b.home.score + b.rival.score - a.home.score - a.rival.score)[0] || null; const scoreCounts = new Map<string, number>(); matches.forEach((m) => { const s = `${m.home.score}-${m.rival.score}`; scoreCounts.set(s, (scoreCounts.get(s) || 0) + 1); }); const common = [...scoreCounts].sort((a, b) => b[1] - a[1])[0] || null; const allPlayers = matches.flatMap((m) => [m.home, m.rival].flatMap((t) => t.lineup.map((p) => ({ ...p, nickname: t.nickname, date: m.date })))); const topGoal = [...allPlayers].sort((a, b) => b.goals - a.goals)[0] || null; const topAssist = [...allPlayers].sort((a, b) => b.assists - a.assists)[0] || null;
+  return { metrics: { home: metrics("home"), rival: metrics("rival") }, records: { biggestMargin: biggest ? { date: biggest.date, score: `${biggest.home.score}-${biggest.rival.score}`, winner: biggest.result === "draw" ? "무승부" : biggest.result === "win" ? homeName : rivalName } : null, highestScoring: highest ? { date: highest.date, score: `${highest.home.score}-${highest.rival.score}`, total: highest.home.score + highest.rival.score } : null, longestWin: better("win"), longestUnbeaten: better("unbeaten"), longestLoss: better("loss"), commonScore: common ? { score: common[0], count: common[1] } : null, maxPlayerGoals: topGoal && topGoal.goals ? { name: topGoal.name, nickname: topGoal.nickname, value: topGoal.goals, date: topGoal.date } : null, maxPlayerAssists: topAssist && topAssist.assists ? { name: topAssist.name, nickname: topAssist.nickname, value: topAssist.assists, date: topAssist.date } : null, milestones: [1, 50, 100, 200, 500].filter((n) => chronological.length >= n).map((n) => ({ number: n, date: chronological[n - 1].date })) } };
 }
 
-const archiveCache = new Map<string, { expires: number; value: Promise<Awaited<ReturnType<typeof buildArchive>>> }>();
+function oldest(ids: Set<string>, details: MatchDetail[]) { const dates = details.filter((d) => ids.has(d.matchId)).map((d) => Date.parse(d.matchDate)).filter(Number.isFinite); return dates.length ? new Date(Math.min(...dates)).toISOString() : null; }
 
-export function getArchive(apiKey: string, homeNickname = DEFAULT_HOME, rivalNickname = DEFAULT_RIVAL) {
-  const home = homeNickname.trim();
-  const rival = rivalNickname.trim();
-  if (!home || !rival || home.length > 20 || rival.length > 20) {
-    throw new AppError(400, "조회 조건이 올바르지 않습니다.", "INVALID_QUERY");
-  }
-  if (home === rival) throw new AppError(400, "서로 다른 두 닉네임을 입력해 주세요.", "SAME_NICKNAME");
-  const cacheKey = `${home}:${rival}:friendly:v3`;
-  let cached = archiveCache.get(cacheKey);
-  if (!cached || cached.expires <= Date.now()) {
-    const value = buildArchive(apiKey, home, rival);
-    cached = { expires: Date.now() + ARCHIVE_CACHE_MS, value };
-    archiveCache.set(cacheKey, cached);
-    value.catch(() => archiveCache.delete(cacheKey));
-  }
-  return cached.value;
+async function build(key: string, homeName: string, rivalName: string, store?: ArchiveStore) {
+  const [homeUser, rivalUser, meta] = await Promise.all([nexon<{ ouid: string }>(key, "/id", { nickname: homeName }), nexon<{ ouid: string }>(key, "/id", { nickname: rivalName }), getMeta()]);
+  const stored = store ? await store.load(homeUser.ouid, rivalUser.ouid).catch(() => []) : [];
+  const [homeScan, rivalScan] = await Promise.all([collectIds(key, homeUser.ouid, meta.targetTypes), collectIds(key, rivalUser.ouid, meta.targetTypes)]);
+  const combined = homeScan.ids.length + rivalScan.ids.length; const unique = [...new Set([...homeScan.ids, ...rivalScan.ids])]; const storedIds = new Set(stored.map((d) => d.matchId)); const missing = unique.filter((id) => !storedIds.has(id)); let success = 0; let failed = 0;
+  const fetched = (await pool(missing, async (id) => { try { const d = await detail(key, id); success++; return d; } catch { failed++; return null; } })).filter((d): d is MatchDetail => Boolean(d)); const typeIds = new Set(meta.targetTypes.map((t) => t.id)); const valid = (d: MatchDetail) => typeIds.has(d.matchType) && d.matchInfo.some((x) => x.ouid === homeUser.ouid) && d.matchInfo.some((x) => x.ouid === rivalUser.ouid); const fresh = fetched.filter(valid); const saved = store ? await store.save(fresh, homeUser.ouid, rivalUser.ouid).catch(() => 0) : 0; const merged = new Map<string, MatchDetail>(); [...stored, ...fresh].filter(valid).forEach((d) => merged.set(d.matchId, d)); const headToHead = [...merged.values()]; const all = buildMatches(headToHead, homeUser.ouid, rivalUser.ouid, meta); const examined = [...stored, ...fetched];
+  return { version: "ULTIMATE v4", users: { home: { nickname: homeName, ouid: homeUser.ouid }, rival: { nickname: rivalName, ouid: rivalUser.ouid } }, summary: all.summary, playerStats: all.playerStats, matches: all.matches, bestXi: { home: bestXi(headToHead, homeUser.ouid, meta), rival: bestXi(headToHead, rivalUser.ouid, meta) }, analysis: analyze(all.matches, homeName, rivalName), database: { enabled: Boolean(store), storedMatches: store ? await store.count(homeUser.ouid, rivalUser.ouid).catch(() => all.summary.total) : 0, loadedMatches: stored.length, savedMatches: saved }, scanInfo: { targetMatchTypes: meta.targetTypes, homeMatchIds: homeScan.ids.length, rivalMatchIds: rivalScan.ids.length, combinedMatchIds: combined, duplicateMatchIds: combined - unique.length, uniqueMatchIds: unique.length, detailSuccess: success, detailFailed: failed, detailLoadedFromDatabase: stored.length, detailRequested: missing.length, headToHeadMatches: all.summary.total, homePages: homeScan.pages, rivalPages: rivalScan.pages, homeOldestMatchDate: oldest(new Set(homeScan.ids), examined), rivalOldestMatchDate: oldest(new Set(rivalScan.ids), examined), homeSafetyCapReached: homeScan.safetyCapReached, rivalSafetyCapReached: rivalScan.safetyCapReached, maxPerUser: MAX_IDS, byMatchType: meta.targetTypes.map((type) => { const h = homeScan.byType.find((x) => x.id === type.id); const r = rivalScan.byType.find((x) => x.id === type.id); return { id: type.id, name: type.name, homeMatchIds: h?.ids.length || 0, rivalMatchIds: r?.ids.length || 0, homePages: h?.pages || 0, rivalPages: r?.pages || 0, homeEndOffset: h?.endOffset || 0, rivalEndOffset: r?.endOffset || 0, homeSafetyCapReached: h?.safetyCapReached || false, rivalSafetyCapReached: r?.safetyCapReached || false }; }) }, updatedAt: new Date().toISOString() };
 }
+
+const archiveCache = new Map<string, { until: number; value: Promise<Awaited<ReturnType<typeof build>>> }>();
+export function getArchive(key: string, homeNickname = DEFAULT_HOME, rivalNickname = DEFAULT_RIVAL, store?: ArchiveStore) {
+  const home = homeNickname.trim(); const rival = rivalNickname.trim(); if (!home || !rival || home.length > 20 || rival.length > 20) throw new AppError(400, "조회 조건이 올바르지 않습니다.", "INVALID_QUERY"); if (home === rival) throw new AppError(400, "서로 다른 두 닉네임을 입력해 주세요.", "SAME_NICKNAME"); const cacheKey = `${home}:${rival}:v4:${store ? "db" : "memory"}`; let cached = archiveCache.get(cacheKey); if (!cached || cached.until <= Date.now()) { const value = build(key, home, rival, store); cached = { until: Date.now() + ARCHIVE_TTL, value }; archiveCache.set(cacheKey, cached); value.catch(() => archiveCache.delete(cacheKey)); } return cached.value;
+}
+

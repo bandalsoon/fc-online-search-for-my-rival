@@ -15,6 +15,10 @@ app.get("/api/health", (_req, res) => res.json({
   ok: true,
   apiKeyConfigured: Boolean(API_KEY),
   friendlyMatchType: FRIENDLY_MATCH_TYPE,
+  includedFriendlyModes: ["클래식 1on1", "공식 친선"],
+  managerModeExcluded: true,
+  databaseConfigured: false,
+  version: "ULTIMATE v4",
 }));
 
 app.get("/api/archive", async (req, res, next) => {
@@ -41,3 +45,4 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.listen(PORT, "0.0.0.0", () => console.log(`FC ONLINE archive API: http://localhost:${PORT}`));
+

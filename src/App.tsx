@@ -1,213 +1,83 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, Crosshair, Handshake, RefreshCw, ShieldAlert, Swords, UserRound } from "lucide-react";
-import type { Archive, ArchiveSummary, Match, PlayerRanking } from "./types";
+import { Activity, BarChart3, CalendarDays, ChevronDown, Crosshair, Database, Handshake, RefreshCw, ShieldAlert, Shirt, Swords, UserRound, Users } from "lucide-react";
+import type { Archive, ArchiveSummary, BestPlayer, LineupPlayer, Match, PlayerRanking, Side } from "./types";
 
 const HOME = "새로운성연합";
 const RIVAL = "피버슛";
-const MATCHES_PER_PAGE = 20;
-type Side = "home" | "rival";
-type MatchTypeFilter = "all" | number;
+const PAGE = 20;
+type Tab = "overview" | "matches" | "players" | "best" | "analysis";
 
-function formatDate(value: string | null, includeTime = true) {
+function date(value: string | null, time = false) {
   if (!value) return "기록 없음";
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric", month: "short", day: "numeric",
-    ...(includeTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "short", day: "numeric", ...(time ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(new Date(value));
 }
 
-function MatchRow({ match }: { match: Match }) {
-  const labels = { win: "승", draw: "무", loss: "패" };
-  return (
-    <article className="match-row">
-      <div className={`result result-${match.result}`}>{labels[match.result]}</div>
-      <div className="match-meta">
-        <span><CalendarDays size={13} />{formatDate(match.date)}</span>
-        <strong>{match.matchTypeName}</strong>
-      </div>
-      <div className="scoreboard">
-        <span>{match.home.nickname}</span>
-        <strong>{match.home.score}</strong><i>:</i><strong>{match.rival.score}</strong>
-        <span>{match.rival.nickname}</span>
-      </div>
-      <div className="shooting">슈팅 {match.home.shots} : {match.rival.shots}<br />유효 슈팅 {match.home.effectiveShots} : {match.rival.effectiveShots}</div>
-    </article>
-  );
+function Face({ player, round = false }: { player: PlayerRanking; round?: boolean }) {
+  const [index, setIndex] = useState(0); const sources = [player.faceUrl, player.actionFaceUrl];
+  useEffect(() => setIndex(0), [player.faceUrl, player.actionFaceUrl]);
+  return <div className={`face ${round ? "round" : ""}`}>{index < sources.length ? <img src={sources[index]} alt="" loading="lazy" onError={() => setIndex((v) => v + 1)} /> : <UserRound />}</div>;
 }
 
-function PlayerFace({ player }: { player: PlayerRanking }) {
-  const [sourceIndex, setSourceIndex] = useState(0);
-  const sources = [player.faceUrl, player.actionFaceUrl].filter(Boolean);
-  useEffect(() => setSourceIndex(0), [player.faceUrl, player.actionFaceUrl]);
-  return (
-    <div className="player-face">
-      {sourceIndex < sources.length && <img src={sources[sourceIndex]} alt="" loading="lazy" onError={() => setSourceIndex((index) => index + 1)} />}
-      {sourceIndex >= sources.length && <UserRound size={28} aria-label="선수 이미지 없음" />}
-    </div>
-  );
+function SideSwitch({ side, setSide, data }: { side: Side; setSide: (side: Side) => void; data: Archive }) {
+  return <div className="side-switch"><button className={side === "home" ? "active home" : ""} onClick={() => setSide("home")}>{data.users.home.nickname}</button><button className={side === "rival" ? "active rival" : ""} onClick={() => setSide("rival")}>{data.users.rival.nickname}</button></div>;
+}
+
+function Duel({ summary, data, side, setSide }: { summary: ArchiveSummary; data: Archive; side: Side; setSide: (s: Side) => void }) {
+  const card = (which: Side) => { const home = which === "home"; const wins = home ? summary.homeWins : summary.rivalWins; const losses = home ? summary.rivalWins : summary.homeWins; const rate = home ? summary.homeWinRate : summary.rivalWinRate; const avg = home ? summary.homeAverageGoals : summary.rivalAverageGoals; const against = home ? summary.homeAverageAgainst : summary.rivalAverageAgainst; return <button className={`duelist ${which} ${side === which ? "selected" : ""}`} onClick={() => setSide(which)}><small>{home ? "HOME" : "RIVAL"}</small><h1>{data.users[which].nickname}</h1><div className="record"><b>{wins}승</b><span>{summary.draws}무</span><span>{losses}패</span></div><div className="duel-metrics"><span><b>{rate.toFixed(1)}%</b><i>승률</i></span><span><b>{avg.toFixed(2)}</b><i>평균 득점</i></span><span><b>{against.toFixed(2)}</b><i>평균 실점</i></span></div></button>; };
+  return <section className="duel">{card("home")}<div className="vs"><em>VS</em><b>{summary.total}</b><span>맞대결</span></div>{card("rival")}</section>;
 }
 
 function Ranking({ title, players, kind }: { title: string; players: PlayerRanking[]; kind: "goals" | "assists" }) {
-  const Icon = kind === "goals" ? Crosshair : Handshake;
-  const unit = kind === "goals" ? "골" : "도움";
-  return (
-    <section className="ranking-section">
-      <div className="section-title"><div><Icon size={18} /><h3>{title}</h3></div><span>상위 8명</span></div>
-      {players.length ? <div className="ranking-list">{players.map((player, index) => (
-        <article className={`player-row rank-${index + 1}`} key={`${player.spId}:${player.grade}`}>
-          <b className="ranking-number">{index + 1}</b>
-          <PlayerFace player={player} />
-          <div className="player-main">
-            <div className="player-tags">
-              {player.seasonIcon && <img src={player.seasonIcon} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
-              <span>{player.season}</span><em>+{player.grade}</em>
-            </div>
-            <strong>{player.name}</strong>
-            <small>{player.appearances}경기 · {player.goals}골 · {player.assists}도움 · 경기당 {player.attackPointsPerMatch.toFixed(2)}P</small>
-          </div>
-          <div className="ranking-value"><strong>{player[kind]}</strong><span>{unit}</span></div>
-        </article>
-      ))}</div> : <div className="empty compact"><Icon size={26} /><p>표시할 선수 기록이 없습니다.</p></div>}
-    </section>
-  );
+  return <section className="ranking"><div className="section-head"><h3>{kind === "goals" ? <Crosshair /> : <Handshake />}{title}</h3><span>TOP 8</span></div><div>{players.map((p, i) => <article className={`player-card rank-${i + 1}`} key={`${p.spId}:${p.grade}`}><b className="rank">{i + 1}</b><Face player={p} /><div className="player-copy"><div><span>{p.season}</span><em>+{p.grade}</em></div><strong>{p.name}</strong><small>{p.appearances}경기 · {p.goals}골 · {p.assists}도움 · {p.attackPointsPerMatch.toFixed(2)}P</small></div><strong className="value">{p[kind]}<i>{kind === "goals" ? "골" : "도움"}</i></strong></article>)}</div></section>;
 }
 
-function UserCard({ side, selected, summary, nickname, onSelect }: {
-  side: Side; selected: boolean; summary: ArchiveSummary | null; nickname: string; onSelect: () => void;
-}) {
-  const isHome = side === "home";
-  const wins = summary ? (isHome ? summary.homeWins : summary.rivalWins) : 0;
-  const losses = summary ? (isHome ? summary.rivalWins : summary.homeWins) : 0;
-  const winRate = summary ? (isHome ? summary.homeWinRate : summary.rivalWinRate) : 0;
-  const goals = summary ? (isHome ? summary.homeGoals : summary.rivalGoals) : 0;
-  const averageGoals = summary ? (isHome ? summary.homeAverageGoals : summary.rivalAverageGoals) : 0;
-  const averageAgainst = summary ? (isHome ? summary.homeAverageAgainst : summary.rivalAverageAgainst) : 0;
-  return (
-    <button className={`user-card ${isHome ? "home" : "rival"} ${selected ? "selected" : ""}`} onClick={onSelect} aria-pressed={selected}>
-      <span className="side-label">{isHome ? "HOME" : "RIVAL"}</span>
-      <h1>{nickname}</h1>
-      <div className="record-line"><strong>{wins}승</strong><span>{summary?.draws ?? 0}무</span><span>{losses}패</span></div>
-      <div className="user-metrics">
-        <span><b>{winRate.toFixed(1)}%</b><small>승률</small></span>
-        <span><b>{goals}</b><small>총 득점</small></span>
-        <span><b>{averageGoals.toFixed(2)}</b><small>평균 득점</small></span>
-        <span><b>{averageAgainst.toFixed(2)}</b><small>평균 실점</small></span>
-      </div>
-      <em>{selected ? "선수 기록 선택됨" : "눌러서 선수 기록 보기"}</em>
-    </button>
-  );
+function PositionRows({ players, best = false }: { players: Array<LineupPlayer | BestPlayer>; best?: boolean }) {
+  const bands = [[20, 27], [9, 19], [1, 8], [0, 0]];
+  return <div className="pitch-players">{bands.map(([from, to]) => <div className="pitch-row" key={from}>{players.filter((p) => p.position >= from && p.position <= to).map((p) => <div className="pitch-player" key={`${p.position}:${p.spId}:${p.grade}`}><div className="face-wrap"><Face player={p} round />{(best ? (p as BestPlayer).averageRating : p.rating) !== null && <b className="rating">{best ? (p as BestPlayer).averageRating : p.rating}</b>}<span>{p.positionName}</span></div><strong>{p.name}</strong><small>+{p.grade} · {best ? `${p.appearances}경기` : `${p.goals}골 ${p.assists}도움`}</small></div>)}</div>)}</div>;
 }
 
-function Skeleton() {
-  return <div className="skeleton-list">{Array.from({ length: 5 }, (_, i) => <div key={i} />)}</div>;
+function Pitch({ players, formation, best = false }: { players: Array<LineupPlayer | BestPlayer>; formation: string; best?: boolean }) {
+  return <div className="pitch"><div className="pitch-label"><Shirt />{formation}</div><div className="field-lines"><i /><i /><i /></div><PositionRows players={players} best={best} /></div>;
+}
+
+function MatchDetail({ match }: { match: Match }) {
+  const metrics = [
+    ["점유율", match.home.possession, match.rival.possession, "%"], ["슈팅", match.home.shots, match.rival.shots, ""],
+    ["유효 슈팅", match.home.effectiveShots, match.rival.effectiveShots, ""], ["패스", match.home.passTry, match.rival.passTry, ""],
+  ] as const;
+  return <div className="match-detail"><div className="detail-metrics">{metrics.map(([label, a, b, unit]) => <div key={label}><b>{a ?? "-"}{a !== null ? unit : ""}</b><span>{label}</span><b>{b ?? "-"}{b !== null ? unit : ""}</b></div>)}</div>{match.goals.length > 0 && <div className="timeline"><h4>득점 타임라인</h4>{match.goals.map((g, i) => <div className={g.side} key={`${g.minute}:${i}`}><b>{g.minute}'</b><span>{g.scorer}{g.assist ? ` · 도움 ${g.assist}` : ""}</span><em>{g.score}</em></div>)}</div>}<div className="mvp-row">{(["home", "rival"] as Side[]).map((s) => match.mvp[s] && <div key={s}><span>실제 평점 최고</span><strong>{match.mvp[s]!.name}</strong><b>{match.mvp[s]!.rating}</b></div>)}</div><div className="lineups"><section><h4>{match.home.nickname} · {match.home.formation}</h4><Pitch players={match.home.lineup} formation={match.home.formation} /></section><section><h4>{match.rival.nickname} · {match.rival.formation}</h4><Pitch players={match.rival.lineup} formation={match.rival.formation} /></section></div></div>;
+}
+
+function MatchRow({ match }: { match: Match }) {
+  const [open, setOpen] = useState(false); const labels = { win: "승", draw: "무", loss: "패" };
+  return <article className={`match ${open ? "open" : ""}`}><button className="match-summary" onClick={() => setOpen((v) => !v)} aria-expanded={open}><span className={`result ${match.result}`}>{labels[match.result]}</span><span className="match-date"><CalendarDays />{date(match.date, true)}</span><span className="score"><i>{match.home.nickname}</i><b>{match.home.score}</b><em>:</em><b>{match.rival.score}</b><i>{match.rival.nickname}</i></span><ChevronDown className="chevron" /></button>{open && <MatchDetail match={match} />}</article>;
+}
+
+function Overview({ data, side, setSide, go }: { data: Archive; side: Side; setSide: (s: Side) => void; go: (t: Tab) => void }) {
+  return <><Duel summary={data.summary} data={data} side={side} setSide={setSide} /><section className="milestone"><div><span>최초 확인</span><b>{date(data.summary.oldestMatchDate)}</b></div><i /><div><span>현재 확인 범위</span><b>{data.summary.total}경기</b></div><i /><div><span>최근 경기</span><b>{date(data.summary.latestMatchDate)}</b></div></section><section className="panel"><div className="panel-head"><div><span>RECENT MATCHES</span><h2>최근 맞대결</h2></div><button onClick={() => go("matches")}>전체 경기 보기</button></div>{data.matches.slice(0, 5).map((m) => <MatchRow key={m.id} match={m} />)}</section></>;
+}
+
+function Matches({ data }: { data: Archive }) {
+  const [count, setCount] = useState(PAGE); return <section className="panel"><div className="panel-head"><div><span>MATCH ARCHIVE</span><h2>전체 맞대결</h2></div><p>최신순 · {data.matches.length}경기</p></div>{data.matches.slice(0, count).map((m) => <MatchRow key={m.id} match={m} />)}{count < data.matches.length && <button className="more" onClick={() => setCount((v) => v + PAGE)}>다음 20경기 보기 <span>{count} / {data.matches.length}</span><ChevronDown /></button>}</section>;
+}
+
+function Players({ data, side, setSide }: { data: Archive; side: Side; setSide: (s: Side) => void }) {
+  return <><SideSwitch side={side} setSide={setSide} data={data} /><div className="ranking-grid"><Ranking title="득점왕" players={data.playerStats[side].topScorers} kind="goals" /><Ranking title="도움왕" players={data.playerStats[side].topAssists} kind="assists" /></div></>;
+}
+
+function BestXi({ data, side, setSide }: { data: Archive; side: Side; setSide: (s: Side) => void }) {
+  const best = data.bestXi[side]; return <><SideSwitch side={side} setSide={setSide} data={data} /><section className="panel best-panel"><div className="panel-head"><div><span>POSITION SCORE BEST XI</span><h2>{data.users[side].nickname} BEST XI</h2></div><p>최다 사용 {best.formation} · {best.sampleMatches}경기</p></div><Pitch players={best.players} formation={best.formation} best /><p className="score-note">포지션별 실제 출전 안정성 35% · 누적 공격 30% · 경기당 공격 25% · 승리 기여 10%로 선발합니다. 표시 평점은 Nexon API의 실제 <code>spRating</code> 평균이며 없으면 숨깁니다.</p></section></>;
+}
+
+function Analysis({ data }: { data: Archive }) {
+  const labels: Array<[keyof typeof data.analysis.metrics.home, string, string]> = [["goalsPerMatch", "경기당 득점", ""], ["concededPerMatch", "경기당 실점", ""], ["shotsPerMatch", "경기당 슈팅", ""], ["shotAccuracy", "유효 슈팅률", "%"], ["conversion", "득점 전환율", "%"], ["passCompletion", "패스 성공률", "%"], ["oneGoalWinRate", "1골차 승률", "%"], ["threePlusGoalRate", "3골 이상 비율", "%"], ["scorelessRate", "무득점 비율", "%"]]; const r = data.analysis.records;
+  return <><section className="panel"><div className="panel-head"><div><span>RIVAL METRICS</span><h2>라이벌 분석</h2></div></div><div className="analysis-head"><b>{data.users.home.nickname}</b><span>VS</span><b>{data.users.rival.nickname}</b></div><div className="metrics-list">{labels.map(([key, label, unit]) => <div key={key}><b>{data.analysis.metrics.home[key]}{unit}</b><span>{label}</span><b>{data.analysis.metrics.rival[key]}{unit}</b></div>)}</div></section><section className="panel"><div className="panel-head"><div><span>RIVAL RECORDS</span><h2>기록실</h2></div></div><div className="records"><article><span>최대 점수차</span><b>{r.biggestMargin?.score || "-"}</b><small>{r.biggestMargin?.winner}</small></article><article><span>최다 득점 경기</span><b>{r.highestScoring?.score || "-"}</b><small>합계 {r.highestScoring?.total || 0}골</small></article><article><span>최장 연승</span><b>{r.longestWin.count}경기</b><small>{r.longestWin.owner}</small></article><article><span>최장 무패</span><b>{r.longestUnbeaten.count}경기</b><small>{r.longestUnbeaten.owner}</small></article><article><span>최장 연패</span><b>{r.longestLoss.count}경기</b><small>{r.longestLoss.owner}</small></article><article><span>최빈 스코어</span><b>{r.commonScore?.score || "-"}</b><small>{r.commonScore?.count || 0}회</small></article>{r.maxPlayerGoals && <article><span>한 경기 최다 득점</span><b>{r.maxPlayerGoals.value}골</b><small>{r.maxPlayerGoals.name}</small></article>}{r.maxPlayerAssists && <article><span>한 경기 최다 도움</span><b>{r.maxPlayerAssists.value}도움</b><small>{r.maxPlayerAssists.name}</small></article>}</div>{r.milestones.length > 0 && <div className="milestones"><h3>맞대결 이정표</h3>{r.milestones.map((m) => <span key={m.number}><b>{m.number}번째</b>{date(m.date)}</span>)}</div>}</section></>;
 }
 
 export default function App() {
-  const [data, setData] = useState<Archive | null>(null);
-  const [selected, setSelected] = useState<Side>("home");
-  const [matchType, setMatchType] = useState<MatchTypeFilter>("all");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(MATCHES_PER_PAGE);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    setVisibleCount(MATCHES_PER_PAGE);
-    try {
-      const params = new URLSearchParams({ home: HOME, rival: RIVAL });
-      const response = await fetch(`/api/archive?${params}`);
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error?.message || "기록을 불러오지 못했습니다.");
-      setData(body);
-      setMatchType("all");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "기록을 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-  const summary = matchType === "all" ? data?.summary : data?.summariesByMatchType[String(matchType)];
-  const stats = matchType === "all" ? data?.playerStats : data?.playerStatsByMatchType[String(matchType)];
-  const filteredMatches = useMemo(() => data?.matches.filter((match) => matchType === "all" || match.matchType === matchType) || [], [data, matchType]);
-  const visibleMatches = filteredMatches.slice(0, visibleCount);
-  const filterLabel = matchType === "all" ? "전체 친선" : data?.matchTypes.find((type) => type.id === matchType)?.name || "친선";
-
-  function changeMatchType(value: MatchTypeFilter) {
-    setMatchType(value);
-    setVisibleCount(MATCHES_PER_PAGE);
-  }
-
-  return (
-    <div className="app-shell">
-      <div className="ambient ambient-home" /><div className="ambient ambient-rival" />
-      <main>
-        <header className="site-header">
-          <div className="brand"><div className="logo"><Swords size={20} /></div><div><strong>FC ONLINE 라이벌 아카이브</strong><span>두 사람의 1대1 친선 기록</span></div></div>
-          <button className="refresh" onClick={() => void load()} disabled={loading}><RefreshCw size={16} className={loading ? "spin" : ""} /><span>새로고침</span></button>
-        </header>
-
-        <section className="duel-grid">
-          <UserCard side="home" selected={selected === "home"} summary={summary || null} nickname={data?.users.home.nickname || HOME} onSelect={() => setSelected("home")} />
-          <div className="versus-center"><span>VS</span><strong>{summary?.total ?? "–"}</strong><small>맞대결</small><em>{summary?.draws ?? "–"}무</em></div>
-          <UserCard side="rival" selected={selected === "rival"} summary={summary || null} nickname={data?.users.rival.nickname || RIVAL} onSelect={() => setSelected("rival")} />
-        </section>
-
-        <nav className="match-filters" aria-label="경기 유형 필터">
-          <button className={matchType === "all" ? "active" : ""} onClick={() => changeMatchType("all")}>전체 친선 <span>{data?.summary.total ?? 0}</span></button>
-          {data?.matchTypes.map((type) => <button key={type.id} className={matchType === type.id ? "active" : ""} onClick={() => changeMatchType(type.id)}>{type.name} <span>{type.count}</span></button>)}
-        </nav>
-
-        {error ? <section className="error-card"><ShieldAlert size={30} /><div><h2>기록을 불러오지 못했어요</h2><p>{error}</p></div><button onClick={() => void load()}>다시 시도</button></section> : <>
-          <section className="timeline-strip">
-            <div><span>최초 확인 경기</span><strong>{formatDate(summary?.oldestMatchDate || null, false)}</strong></div>
-            <i />
-            <div><span>선택 범위</span><strong>{filterLabel}</strong></div>
-            <i />
-            <div><span>최근 경기</span><strong>{formatDate(summary?.latestMatchDate || null, false)}</strong></div>
-          </section>
-
-          <section className="panel rankings-panel">
-            <div className="panel-heading">
-              <div><span>선수 기록</span><h2>{data?.users[selected].nickname || (selected === "home" ? HOME : RIVAL)}</h2></div>
-              <p>{filterLabel} 전체 경기 기준</p>
-            </div>
-            {loading ? <Skeleton /> : <div className="ranking-grid">
-              <Ranking title="득점왕" players={stats?.[selected].topScorers || []} kind="goals" />
-              <Ranking title="도움왕" players={stats?.[selected].topAssists || []} kind="assists" />
-            </div>}
-          </section>
-
-          <section className="panel matches-panel">
-            <div className="panel-heading">
-              <div><span>경기 기록</span><h2>{filterLabel}</h2></div>
-              <p>최신순 · {filteredMatches.length}경기</p>
-            </div>
-            {loading ? <><p className="loading-copy">양쪽 계정 기록을 끝까지 확인하고 있습니다. 첫 조회는 조금 걸릴 수 있어요.</p><Skeleton /></> : visibleMatches.length ? <>
-              <div>{visibleMatches.map((match) => <MatchRow key={match.id} match={match} />)}</div>
-              {visibleCount < filteredMatches.length && <button className="load-more" onClick={() => setVisibleCount((count) => count + MATCHES_PER_PAGE)}>다음 20경기 보기 <span>{Math.min(visibleCount, filteredMatches.length)} / {filteredMatches.length}</span><ChevronDown size={16} /></button>}
-            </> : <div className="empty"><Swords size={32} /><strong>이 유형의 맞대결 기록이 없습니다</strong><p>넥슨 Open API가 현재 반환하는 범위에서 확인한 결과입니다.</p></div>}
-          </section>
-        </>}
-
-        {data && <details className="scan-info">
-          <summary>데이터 수집 정보</summary>
-          <div className="scan-grid">
-            <span>수집 유형 <b>{data.scanInfo.targetMatchTypes.map((type) => type.name).join(", ")}</b></span>
-            <span>{data.users.home.nickname} <b>{data.scanInfo.homeMatchIds.toLocaleString()}경기 · {data.scanInfo.homePages}페이지</b></span>
-            <span>{data.users.rival.nickname} <b>{data.scanInfo.rivalMatchIds.toLocaleString()}경기 · {data.scanInfo.rivalPages}페이지</b></span>
-            <span>합집합 / 중복 제거 <b>{data.scanInfo.combinedMatchIds.toLocaleString()} / {data.scanInfo.duplicateMatchIds.toLocaleString()}</b></span>
-            <span>상세 성공 / 실패 <b>{data.scanInfo.detailSuccess.toLocaleString()} / {data.scanInfo.detailFailed.toLocaleString()}</b></span>
-            <span>최종 맞대결 <b>{data.scanInfo.headToHeadMatches.toLocaleString()}</b></span>
-          </div>
-          <div className="type-scan-list">{data.scanInfo.byMatchType.map((type) => <span key={type.id}>{type.name} ({type.id}) · HOME {type.homeMatchIds} / RIVAL {type.rivalMatchIds}</span>)}</div>
-          {(data.scanInfo.homeSafetyCapReached || data.scanInfo.rivalSafetyCapReached) && <p className="cap-warning">더 오래된 기록이 있을 가능성이 있으나 10,000경기 안전상한에 도달했습니다.</p>}
-        </details>}
-
-        <footer><span>Nexon Open API가 현재 반환하는 범위의 기록입니다.</span><span>{data ? `갱신 ${formatDate(data.updatedAt)}` : "FC ONLINE 라이벌 기록 보관소"}</span></footer>
-      </main>
-    </div>
-  );
+  const [data, setData] = useState<Archive | null>(null); const [tab, setTab] = useState<Tab>("overview"); const [side, setSide] = useState<Side>("home"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const response = await fetch(`/api/archive?${new URLSearchParams({ home: HOME, rival: RIVAL })}`); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || "기록을 불러오지 못했습니다."); setData(body); } catch (e) { setError(e instanceof Error ? e.message : "기록을 불러오지 못했습니다."); } finally { setLoading(false); } }, []);
+  useEffect(() => { void load(); }, [load]); const tabs = useMemo(() => [{ id: "overview", label: "개요", icon: Swords }, { id: "matches", label: "경기", icon: CalendarDays }, { id: "players", label: "선수", icon: Users }, { id: "best", label: "BEST XI", icon: Shirt }, { id: "analysis", label: "분석", icon: BarChart3 }] as const, []);
+  return <div className="app"><main><header><div className="brand"><Swords /><div><strong>FC ONLINE RIVAL ARCHIVE</strong><span>새로운성연합 vs 피버슛</span></div></div><button className="refresh" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} />새로고침</button></header><nav className="tabs">{tabs.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><Icon />{label}</button>)}</nav>{error ? <section className="error"><ShieldAlert /><div><h2>기록을 불러오지 못했어요</h2><p>{error}</p></div><button onClick={() => void load()}>다시 시도</button></section> : loading || !data ? <div className="loading"><Activity className="spin" /><h2>라이벌 기록 동기화 중</h2><p>저장된 아카이브와 Nexon API의 새 경기를 확인하고 있습니다.</p></div> : <>{tab === "overview" && <Overview data={data} side={side} setSide={setSide} go={setTab} />}{tab === "matches" && <Matches data={data} />}{tab === "players" && <Players data={data} side={side} setSide={setSide} />}{tab === "best" && <BestXi data={data} side={side} setSide={setSide} />}{tab === "analysis" && <Analysis data={data} />}<details className="diagnostics"><summary><Database />데이터 정보</summary><div><span>Match Type<b>{data.scanInfo.targetMatchTypes.map((t) => t.id).join(", ")}</b></span><span>HOME / RIVAL 조회<b>{data.scanInfo.homeMatchIds} / {data.scanInfo.rivalMatchIds}</b></span><span>Unique IDs<b>{data.scanInfo.uniqueMatchIds}</b></span><span>API 상세 성공 / 실패<b>{data.scanInfo.detailSuccess} / {data.scanInfo.detailFailed}</b></span><span>DB 로드 / 저장<b>{data.database.loadedMatches} / {data.database.savedMatches}</b></span><span>영구 보관 경기<b>{data.database.storedMatches}</b></span></div></details><footer><span>Nexon Open API가 현재 반환하는 범위의 실제 기록만 사용합니다.</span><span>{data.version} · {date(data.updatedAt, true)}</span></footer></>}</main></div>;
 }
+
