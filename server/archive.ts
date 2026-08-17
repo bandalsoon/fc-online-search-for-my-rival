@@ -17,7 +17,7 @@ const FRIENDLY_NAMES = new Set(["클래식 1on1", "공식 친선"]);
 
 type Status = { goal?: number; assist?: number; spRating?: number; shoot?: number; effectiveShoot?: number; passTry?: number; passSuccess?: number };
 export type MatchPlayer = { spId: number; spGrade?: number; spPosition?: number; status?: Status };
-type ShootDetail = { goalTime?: number; result?: number; spId?: number; spGrade?: number; assist?: boolean; assistSpI?: number };
+type ShootDetail = { goalTime?: number; result?: number; spId?: number; spGrade?: number; assist?: boolean; assistSpId?: number; assistSpI?: number };
 export type MatchInfo = {
   ouid: string; nickname: string;
   matchDetail?: { matchResult?: string; matchEndType?: number; possession?: number };
@@ -172,7 +172,7 @@ function result(home: MatchInfo, rival: MatchInfo): ArchiveMatch["result"] {
 function goalMinute(raw: number) { const unit = 2 ** 24; const segment = Math.floor(raw / unit); return Math.max(1, Math.floor((raw - segment * unit) / 60) + ([0, 45, 90, 105, 120][segment] || 0) + 1); }
 function goals(home: MatchInfo, rival: MatchInfo, meta: Meta) {
   const raw = ([home, rival] as const).flatMap((info, i) => (info.shootDetail || info.shoot?.shootDetail || []).filter((s) => s.result === 3 && typeof s.goalTime === "number" && typeof s.spId === "number").map((shot) => ({ shot, side: (i ? "rival" : "home") as "home" | "rival" }))).sort((a, b) => a.shot.goalTime! - b.shot.goalTime!);
-  let a = 0; let b = 0; return raw.map(({ shot, side }) => { if (side === "home") a++; else b++; return { minute: goalMinute(shot.goalTime!), side, scorer: meta.names.get(shot.spId!) || `선수 ${shot.spId}`, assist: shot.assist && shot.assistSpI ? meta.names.get(shot.assistSpI) || `선수 ${shot.assistSpI}` : null, score: `${a}-${b}` }; });
+  let a = 0; let b = 0; return raw.map(({ shot, side }) => { if (side === "home") a++; else b++; const assistId = shot.assistSpId || shot.assistSpI; return { minute: goalMinute(shot.goalTime!), side, scorer: meta.names.get(shot.spId!) || `선수 ${shot.spId}`, assist: shot.assist && assistId ? meta.names.get(assistId) || `선수 ${assistId}` : null, score: `${a}-${b}` }; });
 }
 
 function buildMatches(details: MatchDetail[], homeOuid: string, rivalOuid: string, meta: Meta) {
