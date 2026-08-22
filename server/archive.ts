@@ -99,10 +99,10 @@ async function getMeta(): Promise<Meta> {
   metaCache = { until: Date.now() + META_TTL, data }; return data;
 }
 
-async function pool<T, R>(items: T[], mapper: (item: T) => Promise<R>) {
+async function pool<T, R>(items: T[], mapper: (item: T) => Promise<R>, concurrency = CONCURRENCY) {
   const output = new Array<R>(items.length); let cursor = 0;
   async function worker() { while (cursor < items.length) { const index = cursor++; output[index] = await mapper(items[index]); } }
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker)); return output;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker)); return output;
 }
 
 type TypeScan = MatchTypeOption & { ids: string[]; pages: number; endOffset: number; safetyCapReached: boolean };
@@ -132,19 +132,22 @@ const salaryCache = new Map<number, { until: number; value: Promise<number | nul
 function salary(spId: number) {
   const cached = salaryCache.get(spId); if (cached && cached.until > Date.now()) return cached.value;
   const body = new URLSearchParams({ spid: String(spId), n1Strong: "1", n1Grow: "0", n4TeamColorId: "0", n4TeamColorLv: "0", n4TeamColorId_Enhance: "0", n4TeamColorLv_Enhance: "0", n4TeamColorId_Feature: "0", n1Change: "0", strPlayerImg: "" });
-  const value = fetch(PLAYER_ABILITY_URL, { method: "POST", headers: { accept: "text/html", "content-type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: body.toString(), signal: AbortSignal.timeout(TIMEOUT) })
-    .then(async (response) => {
-      if (!response.ok) return null;
-      const html = await response.text();
-      const match = html.match(/<div[^>]*class=["'][^"']*\bpay\b[^"']*["'][^>]*>[\s\S]*?<span[^>]*>\s*(\d+)\s*<\/span>/i);
-      return match ? Number(match[1]) : null;
-    }).catch(() => null);
-  salaryCache.set(spId, { until: Date.now() + META_TTL, value }); return value;
+  const value = (async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(PLAYER_ABILITY_URL, { method: "POST", headers: { accept: "text/html", "content-type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: body.toString(), signal: AbortSignal.timeout(TIMEOUT) });
+        if (response.ok) { const html = await response.text(); const match = html.match(/<div[^>]*class=["'][^"']*\bpay\b[^"']*["'][^>]*>[\s\S]*?<span[^>]*>\s*(\d+)\s*<\/span>/i); if (match) return Number(match[1]); }
+      } catch { /* Official player metadata is optional; retry below. */ }
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+    return null;
+  })();
+  salaryCache.set(spId, { until: Date.now() + META_TTL, value }); void value.then((result) => { if (result === null) salaryCache.delete(spId); }); return value;
 }
 
 async function salariesFor(details: MatchDetail[]) {
   const ids = [...new Set(details.flatMap((d) => d.matchInfo.flatMap((info) => (info.player || []).filter((p) => (p.spPosition ?? 28) < 28).map((p) => p.spId))))];
-  const values = await pool(ids, async (spId) => [spId, await salary(spId)] as const);
+  const values = await pool(ids, async (spId) => [spId, await salary(spId)] as const, 2);
   return new Map<number, number | null>(values);
 }
 
