@@ -1,7 +1,7 @@
 const API_ROOT = "https://open.api.nexon.com/fconline/v1";
 const META_ROOT = "https://open.api.nexon.com/static/fconline/meta";
 const IMAGE_ROOT = "https://fco.dn.nexoncdn.co.kr/live/externalAssets/common/players";
-const PLAYER_INFO_ROOT = "https://fconline.nexon.com/DataCenter/PlayerInfo";
+const PLAYER_ABILITY_URL = "https://fconline.nexon.com/datacenter/PlayerAbility";
 
 export const DEFAULT_HOME = "새로운성연합";
 export const DEFAULT_RIVAL = "피버슛";
@@ -131,7 +131,8 @@ function detail(key: string, id: string) {
 const salaryCache = new Map<number, { until: number; value: Promise<number | null> }>();
 function salary(spId: number) {
   const cached = salaryCache.get(spId); if (cached && cached.until > Date.now()) return cached.value;
-  const value = fetch(`${PLAYER_INFO_ROOT}?spid=${spId}`, { headers: { accept: "text/html" }, signal: AbortSignal.timeout(TIMEOUT) })
+  const body = new URLSearchParams({ spid: String(spId), n1Strong: "1", n1Grow: "0", n4TeamColorId: "0", n4TeamColorLv: "0", n4TeamColorId_Enhance: "0", n4TeamColorLv_Enhance: "0", n4TeamColorId_Feature: "0", n1Change: "0", strPlayerImg: "" });
+  const value = fetch(PLAYER_ABILITY_URL, { method: "POST", headers: { accept: "text/html", "content-type": "application/x-www-form-urlencoded; charset=UTF-8" }, body: body.toString(), signal: AbortSignal.timeout(TIMEOUT) })
     .then(async (response) => {
       if (!response.ok) return null;
       const html = await response.text();
