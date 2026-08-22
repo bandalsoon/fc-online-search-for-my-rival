@@ -1,3 +1,5 @@
+import { KNOWN_PLAYER_SALARIES } from "./player-salaries.js";
+
 const API_ROOT = "https://open.api.nexon.com/fconline/v1";
 const META_ROOT = "https://open.api.nexon.com/static/fconline/meta";
 const IMAGE_ROOT = "https://fco.dn.nexoncdn.co.kr/live/externalAssets/common/players";
@@ -130,6 +132,7 @@ function detail(key: string, id: string) {
 
 const salaryCache = new Map<number, { until: number; value: Promise<number | null> }>();
 function salary(spId: number) {
+  if (KNOWN_PLAYER_SALARIES[spId]) return Promise.resolve(KNOWN_PLAYER_SALARIES[spId]);
   const cached = salaryCache.get(spId); if (cached && cached.until > Date.now()) return cached.value;
   const body = new URLSearchParams({ spid: String(spId), n1Strong: "1", n1Grow: "0", n4TeamColorId: "0", n4TeamColorLv: "0", n4TeamColorId_Enhance: "0", n4TeamColorLv_Enhance: "0", n4TeamColorId_Feature: "0", n1Change: "0", strPlayerImg: "" });
   const value = (async () => {
