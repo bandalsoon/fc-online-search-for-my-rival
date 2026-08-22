@@ -2,7 +2,7 @@ export type Side = "home" | "rival";
 export type PlayerRanking = {
   spId: number; name: string; season: string; seasonIcon: string | null; grade: number;
   goals: number; assists: number; attackPoints: number; attackPointsPerMatch: number; appearances: number;
-  faceUrl: string; actionFaceUrl: string; value: null;
+  faceUrl: string; actionFaceUrl: string; salary: number | null; value: null;
 };
 export type LineupPlayer = PlayerRanking & { position: number; positionName: string; rating: number | null };
 export type BestPlayer = LineupPlayer & { wins: number; positionScore: number; averageRating: number | null };

@@ -1,6 +1,7 @@
 const API_ROOT = "https://open.api.nexon.com/fconline/v1";
 const META_ROOT = "https://open.api.nexon.com/static/fconline/meta";
 const IMAGE_ROOT = "https://fco.dn.nexoncdn.co.kr/live/externalAssets/common/players";
+const PLAYER_INFO_ROOT = "https://fconline.nexon.com/DataCenter/PlayerInfo";
 
 export const DEFAULT_HOME = "새로운성연합";
 export const DEFAULT_RIVAL = "피버슛";
@@ -43,7 +44,7 @@ export interface ArchiveStore {
 export type PlayerRanking = {
   spId: number; name: string; season: string; seasonIcon: string | null; grade: number;
   goals: number; assists: number; attackPoints: number; attackPointsPerMatch: number; appearances: number;
-  faceUrl: string; actionFaceUrl: string; value: null;
+  faceUrl: string; actionFaceUrl: string; salary: number | null; value: null;
 };
 type LineupPlayer = PlayerRanking & { position: number; positionName: string; rating: number | null };
 type TeamMatch = { nickname: string; score: number; shots: number; effectiveShots: number; possession: number | null; passTry: number; passSuccess: number; formation: string; lineup: LineupPlayer[] };
@@ -127,22 +128,41 @@ function detail(key: string, id: string) {
   const value = nexon<MatchDetail>(key, "/match-detail", { matchid: id }); detailCache.set(id, { until: Date.now() + DETAIL_TTL, value }); value.catch(() => detailCache.delete(id)); return value;
 }
 
-function playerBase(player: MatchPlayer, meta: Meta): PlayerRanking {
+const salaryCache = new Map<number, { until: number; value: Promise<number | null> }>();
+function salary(spId: number) {
+  const cached = salaryCache.get(spId); if (cached && cached.until > Date.now()) return cached.value;
+  const value = fetch(`${PLAYER_INFO_ROOT}?spid=${spId}`, { headers: { accept: "text/html" }, signal: AbortSignal.timeout(TIMEOUT) })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const html = await response.text();
+      const match = html.match(/<div[^>]*class=["'][^"']*\bpay\b[^"']*["'][^>]*>[\s\S]*?<span[^>]*>\s*(\d+)\s*<\/span>/i);
+      return match ? Number(match[1]) : null;
+    }).catch(() => null);
+  salaryCache.set(spId, { until: Date.now() + META_TTL, value }); return value;
+}
+
+async function salariesFor(details: MatchDetail[]) {
+  const ids = [...new Set(details.flatMap((d) => d.matchInfo.flatMap((info) => (info.player || []).filter((p) => (p.spPosition ?? 28) < 28).map((p) => p.spId))))];
+  const values = await pool(ids, async (spId) => [spId, await salary(spId)] as const);
+  return new Map<number, number | null>(values);
+}
+
+function playerBase(player: MatchPlayer, meta: Meta, salaries: Map<number, number | null>): PlayerRanking {
   const season = meta.seasons.get(Math.floor(player.spId / 1_000_000));
   return { spId: player.spId, name: meta.names.get(player.spId) || `선수 ${player.spId}`, season: season?.name || "시즌 정보 없음", seasonIcon: season?.icon || null,
     grade: player.spGrade || 1, goals: 0, assists: 0, attackPoints: 0, attackPointsPerMatch: 0, appearances: 0,
-    faceUrl: `${IMAGE_ROOT}/p${player.spId}.png`, actionFaceUrl: `${IMAGE_ROOT}Action/p${player.spId}.png`, value: null };
+    faceUrl: `${IMAGE_ROOT}/p${player.spId}.png`, actionFaceUrl: `${IMAGE_ROOT}Action/p${player.spId}.png`, salary: salaries.get(player.spId) ?? null, value: null };
 }
 
-function lineupPlayer(player: MatchPlayer, meta: Meta): LineupPlayer {
+function lineupPlayer(player: MatchPlayer, meta: Meta, salaries: Map<number, number | null>): LineupPlayer {
   const goals = player.status?.goal || 0; const assists = player.status?.assist || 0; const position = player.spPosition ?? 28;
-  return { ...playerBase(player, meta), goals, assists, attackPoints: goals + assists, attackPointsPerMatch: goals + assists, appearances: 1,
+  return { ...playerBase(player, meta, salaries), goals, assists, attackPoints: goals + assists, attackPointsPerMatch: goals + assists, appearances: 1,
     position, positionName: meta.positions.get(position) || "SUB", rating: typeof player.status?.spRating === "number" && player.status.spRating > 0 ? Number(player.status.spRating.toFixed(1)) : null };
 }
 
-function aggregate(target: Map<string, PlayerRanking>, players: MatchPlayer[] | undefined, meta: Meta) {
+function aggregate(target: Map<string, PlayerRanking>, players: MatchPlayer[] | undefined, meta: Meta, salaries: Map<number, number | null>) {
   for (const p of players || []) {
-    if (!p.status) continue; const key = `${p.spId}:${p.spGrade || 1}`; const row = target.get(key) || playerBase(p, meta);
+    if (!p.status) continue; const key = `${p.spId}:${p.spGrade || 1}`; const row = target.get(key) || playerBase(p, meta, salaries);
     row.goals += p.status.goal || 0; row.assists += p.status.assist || 0; row.appearances++; row.attackPoints = row.goals + row.assists; row.attackPointsPerMatch = Number((row.attackPoints / row.appearances).toFixed(2)); target.set(key, row);
   }
 }
@@ -158,8 +178,8 @@ function formation(players: Array<{ spPosition?: number }> | undefined) {
   return counts.every(Boolean) ? counts.join("-") : "실제 배치";
 }
 
-function team(info: MatchInfo, meta: Meta): TeamMatch {
-  const lineup = (info.player || []).filter((p) => (p.spPosition ?? 28) < 28).map((p) => lineupPlayer(p, meta));
+function team(info: MatchInfo, meta: Meta, salaries: Map<number, number | null>): TeamMatch {
+  const lineup = (info.player || []).filter((p) => (p.spPosition ?? 28) < 28).map((p) => lineupPlayer(p, meta, salaries));
   return { nickname: info.nickname, score: info.shoot?.goalTotal || 0, shots: info.shoot?.shootTotal || 0, effectiveShots: info.shoot?.effectiveShootTotal || 0,
     possession: typeof info.matchDetail?.possession === "number" ? info.matchDetail.possession : null, passTry: info.pass?.passTry || 0, passSuccess: info.pass?.passSuccess || 0, formation: formation(info.player), lineup };
 }
@@ -175,11 +195,11 @@ function goals(home: MatchInfo, rival: MatchInfo, meta: Meta) {
   let a = 0; let b = 0; return raw.map(({ shot, side }) => { if (side === "home") a++; else b++; const assistId = shot.assistSpId || shot.assistSpI; return { minute: goalMinute(shot.goalTime!), side, scorer: meta.names.get(shot.spId!) || `선수 ${shot.spId}`, assist: shot.assist && assistId ? meta.names.get(assistId) || `선수 ${assistId}` : null, score: `${a}-${b}` }; });
 }
 
-function buildMatches(details: MatchDetail[], homeOuid: string, rivalOuid: string, meta: Meta) {
+function buildMatches(details: MatchDetail[], homeOuid: string, rivalOuid: string, meta: Meta, salaries: Map<number, number | null>) {
   const homePlayers = new Map<string, PlayerRanking>(); const rivalPlayers = new Map<string, PlayerRanking>(); const matches: ArchiveMatch[] = [];
   for (const match of details) {
     const h = match.matchInfo.find((x) => x.ouid === homeOuid); const r = match.matchInfo.find((x) => x.ouid === rivalOuid); if (!h || !r) continue;
-    aggregate(homePlayers, h.player, meta); aggregate(rivalPlayers, r.player, meta); const home = team(h, meta); const rival = team(r, meta);
+    aggregate(homePlayers, h.player, meta, salaries); aggregate(rivalPlayers, r.player, meta, salaries); const home = team(h, meta, salaries); const rival = team(r, meta, salaries);
     const best = (rows: LineupPlayer[]) => rows.filter((p) => p.rating !== null).sort((a, b) => (b.rating || 0) - (a.rating || 0))[0] || null;
     matches.push({ id: match.matchId, date: match.matchDate, matchType: match.matchType, result: result(h, r), home, rival, goals: goals(h, r, meta), mvp: { home: best(home.lineup), rival: best(rival.lineup) } });
   }
@@ -193,17 +213,62 @@ function buildMatches(details: MatchDetail[], homeOuid: string, rivalOuid: strin
 }
 
 type BestPlayer = LineupPlayer & { wins: number; positionScore: number; averageRating: number | null };
-function bestXi(details: MatchDetail[], ouid: string, meta: Meta) {
+type BestCandidate = {
+  key: string; raw: MatchPlayer; appearances: number; goals: number; assists: number; wins: number; ratings: number[];
+  positions: Map<number, { appearances: number; goals: number; assists: number; wins: number }>;
+};
+
+function positionGroup(name: string) {
+  if (["LCM", "CM", "RCM", "LDM", "CDM", "RDM"].includes(name)) return "CENTRAL_MID";
+  if (["LAM", "RAM", "LM", "RM", "LW", "RW"].includes(name)) return "WIDE";
+  if (["CF", "CAM"].includes(name)) return "CENTRAL_ATTACK";
+  return name;
+}
+
+function bestXi(details: MatchDetail[], ouid: string, meta: Meta, salaries: Map<number, number | null>) {
   const forms = new Map<string, { count: number; positions: number[] }>();
   for (const d of details) { const info = d.matchInfo.find((x) => x.ouid === ouid); if (!info) continue; const positions = (info.player || []).map((p) => p.spPosition ?? 28).filter((p) => p < 28).sort((a, b) => a - b); const key = positions.join(","); const f = forms.get(key) || { count: 0, positions }; f.count++; forms.set(key, f); }
   const selected = [...forms.values()].sort((a, b) => b.count - a.count)[0] || { count: 0, positions: [] };
-  const players = selected.positions.map((position) => {
-    const candidates = new Map<string, { raw: MatchPlayer; apps: number; goals: number; assists: number; wins: number; ratings: number[] }>();
-    for (const d of details) { const info = d.matchInfo.find((x) => x.ouid === ouid); if (!info) continue; for (const p of info.player || []) { if ((p.spPosition ?? 28) !== position) continue; const key = `${p.spId}:${p.spGrade || 1}`; const c = candidates.get(key) || { raw: p, apps: 0, goals: 0, assists: 0, wins: 0, ratings: [] }; c.apps++; c.goals += p.status?.goal || 0; c.assists += p.status?.assist || 0; if (info.matchDetail?.matchResult === "승") c.wins++; if (p.status?.spRating && p.status.spRating > 0) c.ratings.push(p.status.spRating); candidates.set(key, c); } }
-    const rows = [...candidates.values()]; const maxApps = Math.max(1, ...rows.map((r) => r.apps)); const maxAttack = Math.max(1, ...rows.map((r) => r.goals + r.assists)); const role = position <= 8 ? .62 : position <= 19 ? .82 : 1;
-    return rows.map((r) => { const attack = r.goals + r.assists; const per = attack / r.apps; const sample = Math.min(1, r.apps / Math.max(3, selected.count * .35)); const score = ((r.apps / maxApps) * 35 + (attack / maxAttack) * 30 * role + Math.min(1, per / 1.5) * 25 * role + (r.wins / r.apps) * 10) * (.72 + .28 * sample); const base = lineupPlayer(r.raw, meta); const out: BestPlayer = { ...base, appearances: r.apps, goals: r.goals, assists: r.assists, attackPoints: attack, attackPointsPerMatch: Number(per.toFixed(2)), wins: r.wins, positionScore: Number(score.toFixed(2)), averageRating: r.ratings.length ? Number((r.ratings.reduce((a, b) => a + b, 0) / r.ratings.length).toFixed(1)) : null }; return out; }).sort((a, b) => b.positionScore - a.positionScore || b.appearances - a.appearances)[0] || null;
-  }).filter((p): p is BestPlayer => Boolean(p));
-  return { formation: formation(players.map((p) => ({ spPosition: p.position }))), sampleMatches: selected.count, players };
+  const candidateMap = new Map<string, BestCandidate>();
+  for (const d of details) {
+    const info = d.matchInfo.find((x) => x.ouid === ouid); if (!info) continue;
+    for (const p of info.player || []) {
+      const position = p.spPosition ?? 28; if (position >= 28) continue;
+      const key = `${p.spId}:${p.spGrade || 1}`;
+      const candidate: BestCandidate = candidateMap.get(key) || { key, raw: p, appearances: 0, goals: 0, assists: 0, wins: 0, ratings: [], positions: new Map() };
+      candidate.raw = p; candidate.appearances++; candidate.goals += p.status?.goal || 0; candidate.assists += p.status?.assist || 0;
+      if (info.matchDetail?.matchResult === "승") candidate.wins++; if (p.status?.spRating && p.status.spRating > 0) candidate.ratings.push(p.status.spRating);
+      const positionStats = candidate.positions.get(position) || { appearances: 0, goals: 0, assists: 0, wins: 0 };
+      positionStats.appearances++; positionStats.goals += p.status?.goal || 0; positionStats.assists += p.status?.assist || 0; if (info.matchDetail?.matchResult === "승") positionStats.wins++;
+      candidate.positions.set(position, positionStats); candidateMap.set(key, candidate);
+    }
+  }
+  const candidates = [...candidateMap.values()].filter((candidate) => candidate.appearances >= 10);
+  const slotRows = selected.positions.map((position) => {
+    const group = positionGroup(meta.positions.get(position) || "SUB");
+    const rows = candidates.map((candidate) => {
+      const stats = [...candidate.positions].filter(([candidatePosition]) => positionGroup(meta.positions.get(candidatePosition) || "SUB") === group).reduce((sum, [, value]) => ({ appearances: sum.appearances + value.appearances, goals: sum.goals + value.goals, assists: sum.assists + value.assists, wins: sum.wins + value.wins }), { appearances: 0, goals: 0, assists: 0, wins: 0 });
+      return { candidate, stats };
+    }).filter((row) => row.stats.appearances > 0);
+    const maxApps = Math.max(1, ...rows.map((row) => row.stats.appearances)); const maxAttack = Math.max(1, ...rows.map((row) => row.stats.goals + row.stats.assists)); const role = position <= 8 ? .62 : position <= 19 ? .82 : 1;
+    return rows.map(({ candidate, stats }) => { const attack = stats.goals + stats.assists; const per = attack / stats.appearances; const sample = Math.min(1, stats.appearances / Math.max(3, selected.count * .35)); const score = ((stats.appearances / maxApps) * 35 + (attack / maxAttack) * 30 * role + Math.min(1, per / 1.5) * 25 * role + (stats.wins / stats.appearances) * 10) * (.72 + .28 * sample); return { key: candidate.key, score, candidate }; }).sort((a, b) => b.score - a.score || b.candidate.appearances - a.candidate.appearances || a.candidate.raw.spId - b.candidate.raw.spId);
+  });
+  type Assignment = { score: number; picks: Array<{ slot: number; key: string; score: number }> };
+  let states = new Map<number, Assignment>([[0, { score: 0, picks: [] }]]);
+  for (const candidate of candidates) {
+    const next = new Map(states);
+    for (const [mask, assignment] of states) for (let slot = 0; slot < slotRows.length; slot++) {
+      if (mask & (1 << slot)) continue; const row = slotRows[slot].find((item) => item.key === candidate.key); if (!row) continue;
+      const nextMask = mask | (1 << slot); const nextAssignment = { score: assignment.score + row.score, picks: [...assignment.picks, { slot, key: candidate.key, score: row.score }] }; const current = next.get(nextMask); if (!current || nextAssignment.score > current.score) next.set(nextMask, nextAssignment);
+    }
+    states = next;
+  }
+  const assignment = [...states.entries()].sort((a, b) => b[1].picks.length - a[1].picks.length || b[1].score - a[1].score)[0]?.[1] || { score: 0, picks: [] };
+  const players = assignment.picks.sort((a, b) => a.slot - b.slot).map(({ slot, key, score }) => {
+    const candidate = candidateMap.get(key)!; const position = selected.positions[slot]; const attack = candidate.goals + candidate.assists; const base = lineupPlayer(candidate.raw, meta, salaries);
+    return { ...base, position, positionName: meta.positions.get(position) || "SUB", appearances: candidate.appearances, goals: candidate.goals, assists: candidate.assists, attackPoints: attack, attackPointsPerMatch: Number((attack / candidate.appearances).toFixed(2)), wins: candidate.wins, positionScore: Number(score.toFixed(2)), averageRating: candidate.ratings.length ? Number((candidate.ratings.reduce((a, b) => a + b, 0) / candidate.ratings.length).toFixed(1)) : null } satisfies BestPlayer;
+  });
+  return { formation: formation(selected.positions.map((spPosition) => ({ spPosition }))), sampleMatches: selected.count, players };
 }
 
 function pct(a: number, b: number) { return b ? Number((a / b * 100).toFixed(1)) : 0; }
@@ -221,12 +286,12 @@ async function build(key: string, homeName: string, rivalName: string, store?: A
   const stored = store ? await store.load(homeUser.ouid, rivalUser.ouid).catch(() => []) : [];
   const [homeScan, rivalScan] = await Promise.all([collectIds(key, homeUser.ouid, meta.targetTypes), collectIds(key, rivalUser.ouid, meta.targetTypes)]);
   const combined = homeScan.ids.length + rivalScan.ids.length; const unique = [...new Set([...homeScan.ids, ...rivalScan.ids])]; const storedIds = new Set(stored.map((d) => d.matchId)); const missing = unique.filter((id) => !storedIds.has(id)); let success = 0; let failed = 0;
-  const fetched = (await pool(missing, async (id) => { try { const d = await detail(key, id); success++; return d; } catch { failed++; return null; } })).filter((d): d is MatchDetail => Boolean(d)); const typeIds = new Set(meta.targetTypes.map((t) => t.id)); const valid = (d: MatchDetail) => typeIds.has(d.matchType) && d.matchInfo.some((x) => x.ouid === homeUser.ouid) && d.matchInfo.some((x) => x.ouid === rivalUser.ouid); const fresh = fetched.filter(valid); const saved = store ? await store.save(fresh, homeUser.ouid, rivalUser.ouid).catch(() => 0) : 0; const merged = new Map<string, MatchDetail>(); [...stored, ...fresh].filter(valid).forEach((d) => merged.set(d.matchId, d)); const headToHead = [...merged.values()]; const all = buildMatches(headToHead, homeUser.ouid, rivalUser.ouid, meta); const examined = [...stored, ...fetched];
-  return { version: "ULTIMATE v4", users: { home: { nickname: homeName, ouid: homeUser.ouid }, rival: { nickname: rivalName, ouid: rivalUser.ouid } }, summary: all.summary, playerStats: all.playerStats, matches: all.matches, bestXi: { home: bestXi(headToHead, homeUser.ouid, meta), rival: bestXi(headToHead, rivalUser.ouid, meta) }, analysis: analyze(all.matches, homeName, rivalName), database: { enabled: Boolean(store), storedMatches: store ? await store.count(homeUser.ouid, rivalUser.ouid).catch(() => all.summary.total) : 0, loadedMatches: stored.length, savedMatches: saved }, scanInfo: { targetMatchTypes: meta.targetTypes, homeMatchIds: homeScan.ids.length, rivalMatchIds: rivalScan.ids.length, combinedMatchIds: combined, duplicateMatchIds: combined - unique.length, uniqueMatchIds: unique.length, detailSuccess: success, detailFailed: failed, detailLoadedFromDatabase: stored.length, detailRequested: missing.length, headToHeadMatches: all.summary.total, homePages: homeScan.pages, rivalPages: rivalScan.pages, homeOldestMatchDate: oldest(new Set(homeScan.ids), examined), rivalOldestMatchDate: oldest(new Set(rivalScan.ids), examined), homeSafetyCapReached: homeScan.safetyCapReached, rivalSafetyCapReached: rivalScan.safetyCapReached, maxPerUser: MAX_IDS, byMatchType: meta.targetTypes.map((type) => { const h = homeScan.byType.find((x) => x.id === type.id); const r = rivalScan.byType.find((x) => x.id === type.id); return { id: type.id, name: type.name, homeMatchIds: h?.ids.length || 0, rivalMatchIds: r?.ids.length || 0, homePages: h?.pages || 0, rivalPages: r?.pages || 0, homeEndOffset: h?.endOffset || 0, rivalEndOffset: r?.endOffset || 0, homeSafetyCapReached: h?.safetyCapReached || false, rivalSafetyCapReached: r?.safetyCapReached || false }; }) }, updatedAt: new Date().toISOString() };
+  const fetched = (await pool(missing, async (id) => { try { const d = await detail(key, id); success++; return d; } catch { failed++; return null; } })).filter((d): d is MatchDetail => Boolean(d)); const typeIds = new Set(meta.targetTypes.map((t) => t.id)); const valid = (d: MatchDetail) => typeIds.has(d.matchType) && d.matchInfo.some((x) => x.ouid === homeUser.ouid) && d.matchInfo.some((x) => x.ouid === rivalUser.ouid); const fresh = fetched.filter(valid); const saved = store ? await store.save(fresh, homeUser.ouid, rivalUser.ouid).catch(() => 0) : 0; const merged = new Map<string, MatchDetail>(); [...stored, ...fresh].filter(valid).forEach((d) => merged.set(d.matchId, d)); const headToHead = [...merged.values()]; const salaries = await salariesFor(headToHead); const all = buildMatches(headToHead, homeUser.ouid, rivalUser.ouid, meta, salaries); const examined = [...stored, ...fetched];
+  return { version: "ULTIMATE v4.5", users: { home: { nickname: homeName, ouid: homeUser.ouid }, rival: { nickname: rivalName, ouid: rivalUser.ouid } }, summary: all.summary, playerStats: all.playerStats, matches: all.matches, bestXi: { home: bestXi(headToHead, homeUser.ouid, meta, salaries), rival: bestXi(headToHead, rivalUser.ouid, meta, salaries) }, analysis: analyze(all.matches, homeName, rivalName), database: { enabled: Boolean(store), storedMatches: store ? await store.count(homeUser.ouid, rivalUser.ouid).catch(() => all.summary.total) : 0, loadedMatches: stored.length, savedMatches: saved }, scanInfo: { targetMatchTypes: meta.targetTypes, homeMatchIds: homeScan.ids.length, rivalMatchIds: rivalScan.ids.length, combinedMatchIds: combined, duplicateMatchIds: combined - unique.length, uniqueMatchIds: unique.length, detailSuccess: success, detailFailed: failed, detailLoadedFromDatabase: stored.length, detailRequested: missing.length, headToHeadMatches: all.summary.total, homePages: homeScan.pages, rivalPages: rivalScan.pages, homeOldestMatchDate: oldest(new Set(homeScan.ids), examined), rivalOldestMatchDate: oldest(new Set(rivalScan.ids), examined), homeSafetyCapReached: homeScan.safetyCapReached, rivalSafetyCapReached: rivalScan.safetyCapReached, maxPerUser: MAX_IDS, byMatchType: meta.targetTypes.map((type) => { const h = homeScan.byType.find((x) => x.id === type.id); const r = rivalScan.byType.find((x) => x.id === type.id); return { id: type.id, name: type.name, homeMatchIds: h?.ids.length || 0, rivalMatchIds: r?.ids.length || 0, homePages: h?.pages || 0, rivalPages: r?.pages || 0, homeEndOffset: h?.endOffset || 0, rivalEndOffset: r?.endOffset || 0, homeSafetyCapReached: h?.safetyCapReached || false, rivalSafetyCapReached: r?.safetyCapReached || false }; }) }, updatedAt: new Date().toISOString() };
 }
 
 const archiveCache = new Map<string, { until: number; value: Promise<Awaited<ReturnType<typeof build>>> }>();
 export function getArchive(key: string, homeNickname = DEFAULT_HOME, rivalNickname = DEFAULT_RIVAL, store?: ArchiveStore) {
-  const home = homeNickname.trim(); const rival = rivalNickname.trim(); if (!home || !rival || home.length > 20 || rival.length > 20) throw new AppError(400, "조회 조건이 올바르지 않습니다.", "INVALID_QUERY"); if (home === rival) throw new AppError(400, "서로 다른 두 닉네임을 입력해 주세요.", "SAME_NICKNAME"); const cacheKey = `${home}:${rival}:v4:${store ? "db" : "memory"}`; let cached = archiveCache.get(cacheKey); if (!cached || cached.until <= Date.now()) { const value = build(key, home, rival, store); cached = { until: Date.now() + ARCHIVE_TTL, value }; archiveCache.set(cacheKey, cached); value.catch(() => archiveCache.delete(cacheKey)); } return cached.value;
+  const home = homeNickname.trim(); const rival = rivalNickname.trim(); if (!home || !rival || home.length > 20 || rival.length > 20) throw new AppError(400, "조회 조건이 올바르지 않습니다.", "INVALID_QUERY"); if (home === rival) throw new AppError(400, "서로 다른 두 닉네임을 입력해 주세요.", "SAME_NICKNAME"); const cacheKey = `${home}:${rival}:v4.5:${store ? "db" : "memory"}`; let cached = archiveCache.get(cacheKey); if (!cached || cached.until <= Date.now()) { const value = build(key, home, rival, store); cached = { until: Date.now() + ARCHIVE_TTL, value }; archiveCache.set(cacheKey, cached); value.catch(() => archiveCache.delete(cacheKey)); } return cached.value;
 }
 

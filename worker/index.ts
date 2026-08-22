@@ -24,7 +24,7 @@ export default {
         includedFriendlyModes: ["클래식 1on1", "공식 친선"],
         managerModeExcluded: true,
         databaseConfigured: Boolean(env.DB),
-        version: "ULTIMATE v4",
+        version: "ULTIMATE v4.5",
         timelineFieldVerified: true,
       });
     }

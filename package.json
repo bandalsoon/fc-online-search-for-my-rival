@@ -10,7 +10,8 @@
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build --configLoader runner && vite build --config vite.worker.config.ts --configLoader runner",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "test:formation": "node --test tests/formation.test.ts"
   },
   "dependencies": {
     "compression": "^1.7.5",
@@ -37,3 +38,4 @@
     "vite": "^6.0.7"
   }
 }
+

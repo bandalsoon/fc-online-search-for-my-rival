@@ -18,7 +18,7 @@ app.get("/api/health", (_req, res) => res.json({
   includedFriendlyModes: ["클래식 1on1", "공식 친선"],
   managerModeExcluded: true,
   databaseConfigured: false,
-  version: "ULTIMATE v4",
+  version: "ULTIMATE v4.5",
 }));
 
 app.get("/api/archive", async (req, res, next) => {
