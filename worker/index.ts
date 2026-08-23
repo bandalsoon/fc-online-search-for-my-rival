@@ -1,4 +1,4 @@
-import { AppError, DEFAULT_HOME, DEFAULT_RIVAL, getArchive } from "../server/archive.js";
+import { AppError, ARCHIVE_VERSION, DEFAULT_HOME, DEFAULT_RIVAL, getArchive, INCLUDED_FRIENDLY_MODES } from "../server/archive.js";
 import { createD1Store, type D1DatabaseLike } from "./d1-store.js";
 
 interface Env {
@@ -21,10 +21,10 @@ export default {
       return json({
         ok: true,
         apiKeyConfigured: Boolean(env.NEXON_API_KEY?.trim()),
-        includedFriendlyModes: ["클래식 1on1", "공식 친선"],
+        includedFriendlyModes: INCLUDED_FRIENDLY_MODES,
         managerModeExcluded: true,
         databaseConfigured: Boolean(env.DB),
-        version: "ULTIMATE v4.5",
+        version: ARCHIVE_VERSION,
         timelineFieldVerified: true,
       });
     }
@@ -41,4 +41,5 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
 
