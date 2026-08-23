@@ -19,8 +19,7 @@
     "express": "^4.21.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zod": "^3.24.1"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/compression": "^1.7.5",
@@ -38,4 +37,5 @@
     "vite": "^6.0.7"
   }
 }
+
 
