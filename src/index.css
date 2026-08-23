@@ -13,4 +13,248 @@
 @media(max-width:800px){.duel{grid-template-columns:1fr 72px 1fr}.duelist{padding:16px 12px}.duel-metrics{grid-template-columns:1fr}.lineups,.overview-best{grid-template-columns:1fr}.records{grid-template-columns:repeat(2,1fr)}.match-summary{grid-template-columns:34px 105px 1fr 18px}.pitch{min-height:540px}}
 @media(max-width:560px){.app main{width:calc(100% - 20px);padding-top:14px}.brand strong{font-size:11px}.brand span{font-size:8px}.refresh{padding:8px;font-size:0}.tabs{top:3px}.tabs button{flex-direction:column;gap:2px;padding:7px 2px;font-size:8px}.tabs button svg{width:14px}.duel{grid-template-columns:1fr 45px 1fr;gap:5px}.duelist{padding:13px 8px}.duelist h1{font-size:1rem}.record{gap:5px;flex-wrap:wrap}.record b{width:100%;font-size:17px}.rival .record b{text-align:right}.record span{font-size:9px}.duel-metrics span{padding:6px}.duel-metrics b{font-size:12px}.duel-metrics i{font-size:9px}.vs b{font-size:24px}.vs em{font-size:16px}.panel,.ranking{padding:13px}.panel-head h2{font-size:17px}.match-summary{grid-template-columns:30px 1fr 18px;gap:7px}.match-date{grid-column:2}.score{grid-column:1/-1;padding-left:34px}.match-summary>.chevron{grid-column:3;grid-row:1}.detail-metrics>div,.metrics-list>div{grid-template-columns:1fr 100px 1fr}.mvp-row{grid-template-columns:1fr}.pitch{min-height:500px}.best-panel .pitch{min-height:600px}.pitch-players{inset:42px 3px 43px}.pitch-player{width:78px}.player-rating{min-width:29px;height:19px;font-size:9px}.attack-record{gap:3px;font-size:8px}.face-wrap{width:45px}.face.round{width:45px;height:45px}.face-wrap>span{font-size:7px}.player-identity{width:92px;margin-left:-7px;gap:2px;margin-top:9px}.player-identity .salary{width:17px;height:21px;flex-basis:17px;font-size:6px}.season-sprite{width:16px;height:15px;flex-basis:16px}.player-identity strong{font-size:7px}.player-identity em{padding:2px;font-size:6px}.records{gap:5px}.records article{min-height:88px;padding:9px}.diagnostics>div{grid-template-columns:1fr 1fr}footer{flex-direction:column;gap:4px}}
 
+/* ULTIMATE v5 draft B — balanced sports data */
+:root{
+  --archive-bg:#080d11;
+  --archive-deep:#05090c;
+  --archive-panel:#0d1419;
+  --archive-panel-raised:#131c22;
+  --archive-line:#31404a;
+  --archive-line-soft:#1b2931;
+  --archive-text:#f2f5f7;
+  --archive-muted:#9ca8b2;
+  --archive-home:#f1ac45;
+  --archive-home-soft:#2a2013;
+  --archive-rival:#79c8f2;
+  --archive-rival-soft:#102634;
+}
+
+body,.app{background:var(--archive-bg)}
+.app{background-image:none;color:var(--archive-text)}
+.app main{width:min(1180px,calc(100% - 32px));padding-top:20px}
+.app button:focus:not(:focus-visible){outline:none}
+.app button:focus-visible{outline:2px solid var(--archive-rival);outline-offset:2px}
+
+header{
+  margin:0;
+  border-top:3px solid var(--archive-home);
+  border-bottom:1px solid var(--archive-line);
+  padding:13px 16px;
+  background:var(--archive-deep);
+}
+.brand>svg{
+  border-color:var(--archive-home);
+  border-radius:2px;
+  color:var(--archive-home);
+  background:transparent;
+}
+.brand span{color:var(--archive-muted)}
+.refresh{
+  border-color:var(--archive-line);
+  border-radius:4px;
+  color:var(--archive-muted);
+  background:transparent;
+}
+
+.tabs{
+  top:0;
+  gap:0;
+  margin-bottom:16px;
+  border-width:0 0 1px;
+  border-color:var(--archive-line);
+  border-radius:0;
+  padding:0;
+  background:var(--archive-deep);
+  box-shadow:none;
+}
+.tabs button{
+  position:relative;
+  border-radius:0;
+  padding:12px 8px;
+  color:var(--archive-muted);
+  font-weight:700;
+}
+.tabs button.active{color:var(--archive-text);background:transparent;box-shadow:none}
+.tabs button.active:after{
+  position:absolute;
+  right:20%;
+  bottom:0;
+  left:20%;
+  height:2px;
+  background:var(--archive-home);
+  content:"";
+}
+
+.duel{
+  gap:0;
+  overflow:hidden;
+  border:1px solid var(--archive-line);
+  border-radius:5px;
+  background:var(--archive-panel);
+}
+.duelist{
+  border:0;
+  border-radius:0;
+  padding:20px 18px;
+  background:transparent;
+  transition:none;
+}
+.duelist.selected.home{box-shadow:inset 0 3px var(--archive-home);background:var(--archive-home-soft)}
+.duelist.selected.rival{box-shadow:inset 0 3px var(--archive-rival);background:var(--archive-rival-soft)}
+.duelist small,.panel-head span{color:var(--archive-home)}
+.duelist.rival small,.best-panel.rival .panel-head span{color:var(--archive-rival)}
+.duelist h1{margin-bottom:12px;font-size:clamp(1.25rem,2.6vw,2rem)}
+.record b{color:var(--archive-home)}
+.rival .record b{color:var(--archive-rival)}
+.record span{color:var(--archive-muted)}
+.duel-metrics{
+  gap:0;
+  margin-top:14px;
+  border-top:1px solid var(--archive-line-soft);
+  background:transparent;
+}
+.duel-metrics span{
+  border:0;
+  border-left:1px solid var(--archive-line-soft);
+  border-radius:0;
+  padding:9px 8px 0;
+  background:transparent;
+}
+.duel-metrics span:first-child{border-left:0}
+.duel-metrics i{color:var(--archive-muted)}
+.vs{
+  border-width:0 1px;
+  border-color:var(--archive-line);
+  border-radius:0;
+  background:var(--archive-deep);
+}
+.vs em{color:var(--archive-text)}
+.vs span{color:var(--archive-muted)}
+
+.milestone{
+  margin:10px 0 14px;
+  border-color:var(--archive-line);
+  border-radius:4px;
+  background:var(--archive-deep);
+}
+.milestone span{color:var(--archive-muted)}
+.milestone>i{background:var(--archive-line)}
+
+.panel,.ranking{
+  border-color:var(--archive-line);
+  border-radius:5px;
+  background:var(--archive-panel);
+}
+.best-panel.home{border-top:3px solid var(--archive-home)}
+.best-panel.rival{border-top:3px solid var(--archive-rival)}
+.panel-head,.section-head{border-bottom:1px solid var(--archive-line-soft);padding-bottom:12px}
+.panel-head p,.panel-head button,.section-head span{color:var(--archive-muted)}
+.section-head h3 svg{color:var(--archive-home)}
+
+.pitch{
+  border-color:#34483e;
+  border-radius:2px;
+  background:repeating-linear-gradient(90deg,#15251e 0,#15251e 78px,#192a22 78px,#192a22 156px);
+}
+.player-rating{
+  border-radius:4px;
+  background:var(--archive-home);
+  box-shadow:none;
+}
+.best-panel.rival .player-rating,.lineups>section:nth-child(2) .player-rating{background:var(--archive-rival)}
+.face.round{border-color:#707a75;background:#2b3432}
+.face-wrap>span{border-color:#66716c;border-radius:3px;background:#101714}
+.player-identity .salary{background:#515d64}
+.player-identity em{border-radius:3px;color:#21172b;background:#c59ae4}
+
+.match{border-color:var(--archive-line-soft)}
+.match-summary{padding:14px 4px}
+.result{border-radius:4px}
+.result.win{color:#07140b;background:#75ca93}
+.result.draw{color:#172027;background:#aeb9c1}
+.result.loss{color:#fff;background:#d96870}
+.match-date,.chevron{color:var(--archive-muted)}
+.score{border-right:1px solid var(--archive-line-soft);border-left:1px solid var(--archive-line-soft);padding:4px 10px}
+.score i{color:#c1c9d0}
+.match-detail{
+  border-color:var(--archive-line);
+  border-radius:4px;
+  background:var(--archive-deep);
+}
+.detail-metrics>div,.metrics-list>div{border-color:var(--archive-line-soft);padding:10px 8px}
+.detail-metrics span,.metrics-list span{color:var(--archive-muted)}
+.timeline{border-color:var(--archive-line)}
+.timeline div{border-left:2px solid var(--archive-rival);padding:7px 9px;background:var(--archive-panel)}
+.timeline em{color:var(--archive-rival)}
+.mvp-row div{border-color:var(--archive-line);border-radius:3px;background:var(--archive-panel-raised)}
+.mvp-row span{color:var(--archive-muted)}
+.mvp-row b{color:var(--archive-home)}
+.mvp-row div:last-child b{color:var(--archive-rival)}
+
+.side-switch,.record-switch{
+  gap:0;
+  border-color:var(--archive-line);
+  border-radius:4px;
+  padding:0;
+  background:var(--archive-deep);
+}
+.side-switch button,.record-switch button{border-radius:0;color:var(--archive-muted)}
+.side-switch .active.home,.record-switch button.active{color:#171106;background:var(--archive-home);box-shadow:none}
+.side-switch .active.rival{color:#07151d;background:var(--archive-rival)}
+.ranking{border-width:1px 0;border-radius:0;background:transparent}
+.player-card{border-color:var(--archive-line-soft);padding:11px 10px}
+.player-card.rank-1{border-left:3px solid var(--archive-home);border-radius:0;background:rgba(241,172,69,.06)}
+.rank-1>.rank{color:var(--archive-home)}
+.player-copy div span{color:#bcd7ce;background:#183029}
+.player-copy div em{color:#ead7a6;background:#332b1b}
+.player-copy>small,.value i{color:var(--archive-muted)}
+.value{color:var(--archive-home)}
+
+.analysis-head{border-top:1px solid var(--archive-line);border-bottom:1px solid var(--archive-line);padding:10px 0}
+.analysis-head b:first-child,.metrics-list b:first-child{color:var(--archive-home)}
+.analysis-head b:last-child,.metrics-list b:last-child{color:var(--archive-rival)}
+.analysis-head span{color:var(--archive-muted)}
+.records{gap:7px}
+.records article{
+  min-height:98px;
+  border-color:var(--archive-line-soft);
+  border-radius:2px;
+  border-left:3px solid var(--archive-home);
+  background:var(--archive-panel-raised);
+}
+.records article:nth-child(even){border-left-color:var(--archive-rival)}
+.records span{color:var(--archive-muted)}
+.milestones span{border-color:var(--archive-line);border-radius:3px;background:var(--archive-panel-raised)}
+.more{border-color:var(--archive-line);border-radius:4px;background:var(--archive-panel-raised)}
+.diagnostics{border-color:var(--archive-line);border-radius:4px;color:var(--archive-muted)}
+.diagnostics span{border-color:var(--archive-line-soft);border-radius:2px;background:var(--archive-deep)}
+.error{border-radius:4px}
+footer{color:#697783}
+
+@media(max-width:800px){
+  .duel{grid-template-columns:1fr 72px 1fr}
+  .duel-metrics{grid-template-columns:1fr}
+  .duel-metrics span{border-top:1px solid var(--archive-line-soft);border-left:0;padding:7px 0}
+  .duel-metrics span:first-child{border-top:0}
+}
+
+@media(max-width:560px){
+  .app main{width:calc(100% - 20px);padding-top:10px}
+  header{padding:11px 10px}
+  .tabs button{padding:9px 2px}
+  .tabs button.active:after{right:10%;left:10%}
+  .duel{grid-template-columns:1fr 45px 1fr;gap:0}
+  .duelist{padding:13px 8px}
+  .duelist.selected.home{box-shadow:inset 0 2px var(--archive-home)}
+  .duelist.selected.rival{box-shadow:inset 0 2px var(--archive-rival)}
+  .score{border:0;padding-left:34px}
+  .panel,.ranking{padding:13px}
+  .ranking{padding-right:0;padding-left:0}
+  .player-card{padding-right:8px;padding-left:8px}
+  .player-identity{width:74px;margin-left:2px;gap:1px}
+  .player-identity .salary{width:15px;flex-basis:15px}
+  .season-sprite{width:14px;flex-basis:14px}
+  .player-identity em{padding:2px 1px}
+}
+
 
