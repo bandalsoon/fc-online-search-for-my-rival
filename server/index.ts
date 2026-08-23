@@ -3,7 +3,7 @@ import "dotenv/config";
 import express, { type NextFunction, type Request, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AppError, DEFAULT_HOME, DEFAULT_RIVAL, FRIENDLY_MATCH_TYPE, getArchive } from "./archive.js";
+import { AppError, ARCHIVE_VERSION, DEFAULT_HOME, DEFAULT_RIVAL, FRIENDLY_MATCH_TYPE, getArchive, INCLUDED_FRIENDLY_MODES } from "./archive.js";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -15,10 +15,10 @@ app.get("/api/health", (_req, res) => res.json({
   ok: true,
   apiKeyConfigured: Boolean(API_KEY),
   friendlyMatchType: FRIENDLY_MATCH_TYPE,
-  includedFriendlyModes: ["클래식 1on1", "공식 친선"],
+  includedFriendlyModes: INCLUDED_FRIENDLY_MODES,
   managerModeExcluded: true,
   databaseConfigured: false,
-  version: "ULTIMATE v4.5",
+  version: ARCHIVE_VERSION,
 }));
 
 app.get("/api/archive", async (req, res, next) => {
@@ -45,4 +45,5 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.listen(PORT, "0.0.0.0", () => console.log(`FC ONLINE archive API: http://localhost:${PORT}`));
+
 
