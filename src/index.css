@@ -109,8 +109,8 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .best-panel.home { border-color: rgba(71, 159, 250, .34); }
 .best-panel.rival { border-color: rgba(255, 161, 108, .34); }
 
-.pitch { position: relative; overflow: hidden; min-height: 590px; border: 1px solid var(--fey-smoke); border-radius: var(--radius-card); background: repeating-linear-gradient(0deg, #0b0b0b 0, #0b0b0b 84px, #151515 84px, #151515 168px); }
-.best-panel .pitch { min-height: 680px; }
+.pitch { position: relative; overflow: hidden; height: 880px; border: 1px solid var(--fey-smoke); border-radius: var(--radius-card); background: repeating-linear-gradient(0deg, #0b0b0b 0, #0b0b0b 84px, #151515 84px, #151515 168px); }
+.best-panel .pitch { height: 880px; }
 .pitch::before { position: absolute; inset: 6%; border: 1px solid rgba(134, 143, 151, .34); content: ""; }
 .pitch-label { position: absolute; z-index: 3; top: 12px; left: 14px; display: flex; align-items: center; gap: 6px; color: var(--fey-mist); font-size: 10px; font-weight: 600; }
 .pitch-label svg { width: 14px; }
@@ -118,25 +118,25 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .field-lines i:nth-child(1) { position: absolute; top: 50%; right: 6%; left: 6%; border-top: 1px solid rgba(134, 143, 151, .34); }
 .field-lines i:nth-child(2) { position: absolute; top: calc(50% - 46px); left: 50%; width: 92px; height: 92px; transform: translateX(-50%); border: 1px solid rgba(134, 143, 151, .34); border-radius: 50%; }
 .field-lines i:nth-child(3) { position: absolute; right: 27%; bottom: 6%; left: 27%; height: 19%; border: 1px solid rgba(134, 143, 151, .34); }
-.pitch-players { position: absolute; z-index: 2; inset: 48px 12px 50px; }
-.pitch-player { position: absolute; left: var(--x); top: var(--y); width: 112px; min-width: 0; transform: translate(-50%, -50%); text-align: center; }
-.player-rating { display: inline-flex; min-width: 38px; height: 24px; align-items: center; justify-content: center; gap: 3px; border: 1px solid var(--border-default); border-radius: var(--radius-control); padding: 0 9px; color: var(--fey-white); background: var(--surface-well); font-size: 11px; font-weight: 700; }
+.pitch-players { position: absolute; z-index: 2; inset: 56px 0 58px; }
+.pitch-player { position: absolute; left: var(--x); top: var(--y); width: 96px; min-width: 0; transform: translate(-50%, -50%); text-align: center; }
+.player-rating { display: inline-flex; min-width: 34px; height: 19px; align-items: center; justify-content: center; gap: 3px; border: 1px solid var(--border-default); border-radius: var(--radius-control); padding: 0 7px; color: var(--fey-white); background: var(--surface-well); font-size: 10px; font-weight: 700; }
 .player-rating span { color: var(--focus-growth); font-size: 10px; }
-.attack-record { display: flex; height: 21px; align-items: center; justify-content: center; gap: 5px; color: var(--fey-white); font-size: 10px; font-weight: 600; text-shadow: 0 1px 3px var(--fey-abyss); }
+.attack-record { display: flex; height: 14px; align-items: center; justify-content: center; gap: 4px; color: var(--fey-white); font-size: 8px; font-weight: 600; text-shadow: 0 1px 3px var(--fey-abyss); }
 .attack-record:empty { display: none; }
 .attack-record i { width: 1px; height: 11px; background: var(--fey-smoke); }
-.face-wrap { position: relative; width: 62px; margin: 1px auto 0; }
+.face-wrap { position: relative; width: 48px; margin: 1px auto 0; }
 .face { display: grid; width: 48px; height: 54px; flex: 0 0 48px; place-items: center; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-well); color: var(--text-secondary); background: var(--surface-well); }
-.face.round { width: 62px; height: 62px; border: 1px solid var(--fey-smoke); border-radius: 50%; background: #202020; }
+.face.round { width: 48px; height: 48px; border: 1px solid var(--fey-smoke); border-radius: 50%; background: #202020; }
 .pitch.home .face.round { border-color: var(--home-signal); }
 .pitch.rival .face.round { border-color: var(--rival-ember); }
 .pitch-player.mom .face.round { border-color: var(--focus-growth); box-shadow: 0 0 0 2px rgba(78, 190, 150, .2); }
 .face img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .face svg { width: 22px; }
 .face-wrap > span { position: absolute; right: 50%; bottom: -7px; transform: translateX(50%); border: 1px solid var(--fey-smoke); border-radius: var(--radius-icon); padding: 2px 6px; color: var(--fey-white); background: var(--surface-well); font-size: 8px; font-weight: 700; }
-.player-identity { display: grid; width: 112px; min-width: 0; grid-template-columns: 20px 22px minmax(0, 1fr) auto; align-items: center; gap: 3px; margin-top: 11px; }
-.player-identity .salary { display: grid; width: 20px; height: 24px; place-items: center; clip-path: polygon(50% 0, 100% 23%, 100% 77%, 50% 100%, 0 77%, 0 23%); color: var(--fey-white); background: var(--fey-smoke); font-size: 7px; }
-.season-sprite { width: 22px; height: 18px; object-fit: contain; }
+.player-identity { display: grid; width: 96px; min-width: 0; grid-template-columns: 18px 20px minmax(0, 1fr) auto; align-items: center; gap: 2px; margin-top: 8px; }
+.player-identity .salary { display: grid; width: 18px; height: 21px; place-items: center; clip-path: polygon(50% 0, 100% 23%, 100% 77%, 50% 100%, 0 77%, 0 23%); color: var(--fey-white); background: var(--fey-smoke); font-size: 7px; }
+.season-sprite { width: 20px; height: 16px; object-fit: contain; }
 .season-fallback { overflow: hidden; border: 1px solid var(--border-default); border-radius: 3px; padding: 2px; color: var(--fey-mist); font-size: 6px; text-overflow: ellipsis; white-space: nowrap; }
 .player-identity strong { min-width: 0; color: var(--fey-white); font-size: 9px; line-height: 1.15; overflow-wrap: anywhere; text-shadow: 0 1px 3px var(--fey-abyss); word-break: keep-all; }
 .player-identity em { border: 1px solid var(--border-default); border-radius: 5px; padding: 2px 3px; color: var(--fey-mist); background: var(--surface-well); font-size: 7px; font-style: normal; font-weight: 700; }
@@ -280,10 +280,8 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .duelist { padding: 18px; }
   .duel-metrics { grid-template-columns: 1fr; }
   .overview-best, .lineups { grid-template-columns: 1fr; }
-  .best-panel .pitch { min-height: 720px; }
   .records { grid-template-columns: repeat(2, 1fr); }
   .match-summary { grid-template-columns: 38px 145px 1fr 22px; }
-  .pitch { min-height: 640px; }
 }
 
 @media (max-width: 560px) {
@@ -338,19 +336,19 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .goal-event.home .goal-card { text-align: right; }
   .goal-minute { grid-column: 2; }
   .mvp-row { grid-template-columns: 1fr; }
-  .pitch, .best-panel .pitch { min-height: 620px; }
-  .pitch-players { inset: 46px 3px 47px; }
-  .pitch-player { width: 78px; }
-  .player-rating { min-width: 31px; height: 20px; padding: 0 6px; font-size: 9px; }
-  .attack-record { height: 18px; gap: 3px; font-size: 8px; }
-  .face-wrap { width: 46px; }
-  .face.round { width: 46px; height: 46px; }
+  .pitch, .best-panel .pitch { height: 880px; }
+  .pitch-players { inset: 50px 0 52px; }
+  .pitch-player { width: 62px; }
+  .player-rating { min-width: 30px; height: 18px; padding: 0 5px; font-size: 9px; }
+  .attack-record { height: 14px; gap: 3px; font-size: 8px; }
+  .face-wrap { width: 42px; }
+  .face.round { width: 42px; height: 42px; }
   .face-wrap > span { font-size: 7px; }
-  .player-identity { width: 86px; grid-template-columns: 17px 17px minmax(0, 1fr) auto; gap: 2px; margin-top: 9px; margin-left: -4px; }
-  .player-identity .salary { width: 17px; height: 21px; font-size: 6px; }
-  .season-sprite { width: 17px; height: 15px; }
-  .player-identity strong { font-size: 7px; }
-  .player-identity em { padding: 2px; font-size: 6px; }
+  .player-identity { width: 62px; grid-template-columns: 16px 18px 16px; justify-content: center; gap: 2px 3px; margin-top: 7px; }
+  .player-identity .salary { width: 16px; height: 19px; font-size: 6px; }
+  .season-sprite { width: 18px; height: 15px; }
+  .player-identity strong { grid-column: 1 / -1; grid-row: 2; font-size: 7px; line-height: 1.2; }
+  .player-identity em { grid-column: 3; grid-row: 1; padding: 2px; font-size: 6px; }
   .metrics-list > div { grid-template-columns: 1fr 112px 1fr; }
   .records { gap: 6px; }
   .records article { min-height: 92px; padding: 10px; }
