@@ -263,9 +263,7 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .diagnostics { margin-top: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-well); padding: 10px 12px; color: var(--text-secondary); font-size: 10px; background: var(--surface-well); }
 .diagnostics summary { display: flex; min-height: 40px; align-items: center; gap: 7px; cursor: pointer; font-weight: 600; }
 .diagnostics summary svg { width: 15px; }
-.diagnostics > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 9px; }
-.diagnostics span { border: 1px solid var(--border-default); border-radius: 7px; padding: 8px; background: var(--surface-card); }
-.diagnostics b { display: block; margin-top: 4px; color: var(--fey-mist); }
+.diagnostics p { margin: 7px 0 4px; color: var(--text-secondary); line-height: 1.5; }
 .loading, .error { display: flex; min-height: 390px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .loading svg { color: var(--focus-growth); }
 .loading h2 { font-size: 18px; }
@@ -356,7 +354,6 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .metrics-list > div { grid-template-columns: 1fr 112px 1fr; }
   .records { gap: 6px; }
   .records article { min-height: 92px; padding: 10px; }
-  .diagnostics > div { grid-template-columns: 1fr 1fr; }
   footer { flex-direction: column; gap: 5px; }
 }
 
