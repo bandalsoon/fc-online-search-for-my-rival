@@ -1,13 +1,13 @@
 export type PitchPoint = { x: number; y: number };
 
 export const POSITION_COORDINATES: Readonly<Record<string, PitchPoint>> = {
-  LS: { x: 30, y: 4 }, ST: { x: 50, y: 4 }, RS: { x: 70, y: 4 },
-  LW: { x: 9.5, y: 19 }, LF: { x: 29.75, y: 19 }, CF: { x: 50, y: 19 }, RF: { x: 70.25, y: 19 }, RW: { x: 90.5, y: 19 },
+  LS: { x: 30, y: 1 }, ST: { x: 50, y: 1 }, RS: { x: 70, y: 1 },
+  LW: { x: 9.5, y: 17.5 }, LF: { x: 29.75, y: 17.5 }, CF: { x: 50, y: 17.5 }, RF: { x: 70.25, y: 17.5 }, RW: { x: 90.5, y: 17.5 },
   LAM: { x: 30, y: 34 }, CAM: { x: 50, y: 34 }, RAM: { x: 70, y: 34 },
-  LM: { x: 9.5, y: 49 }, LCM: { x: 29.75, y: 49 }, CM: { x: 50, y: 49 }, RCM: { x: 70.25, y: 49 }, RM: { x: 90.5, y: 49 },
-  LDM: { x: 30, y: 64 }, CDM: { x: 50, y: 64 }, RDM: { x: 70, y: 64 },
-  LWB: { x: 9.5, y: 80 }, LB: { x: 9.5, y: 80 }, LCB: { x: 36.5, y: 80 }, CB: { x: 50, y: 80 }, SW: { x: 50, y: 80 }, RCB: { x: 63.5, y: 80 }, RB: { x: 90.5, y: 80 }, RWB: { x: 90.5, y: 80 },
-  GK: { x: 50, y: 97 },
+  LM: { x: 9.5, y: 50.5 }, LCM: { x: 29.75, y: 50.5 }, CM: { x: 50, y: 50.5 }, RCM: { x: 70.25, y: 50.5 }, RM: { x: 90.5, y: 50.5 },
+  LDM: { x: 30, y: 67 }, CDM: { x: 50, y: 67 }, RDM: { x: 70, y: 67 },
+  LWB: { x: 9.5, y: 83.5 }, LB: { x: 9.5, y: 83.5 }, LCB: { x: 36.5, y: 83.5 }, CB: { x: 50, y: 83.5 }, SW: { x: 50, y: 83.5 }, RCB: { x: 63.5, y: 83.5 }, RB: { x: 90.5, y: 83.5 }, RWB: { x: 90.5, y: 83.5 },
+  GK: { x: 50, y: 100 },
 };
 
 const DEFENDERS = new Set(["LWB", "LB", "LCB", "CB", "SW", "RCB", "RB", "RWB"]);
@@ -36,11 +36,11 @@ export function isThreeBack(positionNames: string[]) {
 
 export function pitchPoint(positionName: string, formationPositions: string[]): PitchPoint {
   const name = normalized(positionName);
-  const base = POSITION_COORDINATES[name] || { x: 50, y: 49 };
-  if (isThreeBack(formationPositions) && name === "LWB") return { x: PITCH_EDGE, y: 64 };
-  if (isThreeBack(formationPositions) && name === "RWB") return { x: 100 - PITCH_EDGE, y: 64 };
-  if (isThreeBack(formationPositions) && name === "LCB") return { x: 27, y: 80 };
-  if (isThreeBack(formationPositions) && name === "RCB") return { x: 73, y: 80 };
+  const base = POSITION_COORDINATES[name] || { x: 50, y: 50.5 };
+  if (isThreeBack(formationPositions) && name === "LWB") return { x: PITCH_EDGE, y: 67 };
+  if (isThreeBack(formationPositions) && name === "RWB") return { x: 100 - PITCH_EDGE, y: 67 };
+  if (isThreeBack(formationPositions) && name === "LCB") return { x: 27, y: 83.5 };
+  if (isThreeBack(formationPositions) && name === "RCB") return { x: 73, y: 83.5 };
   return base;
 }
 
