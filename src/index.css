@@ -118,7 +118,7 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .field-lines i:nth-child(1) { position: absolute; top: 50%; right: 6%; left: 6%; border-top: 1px solid rgba(134, 143, 151, .34); }
 .field-lines i:nth-child(2) { position: absolute; top: calc(50% - 46px); left: 50%; width: 92px; height: 92px; transform: translateX(-50%); border: 1px solid rgba(134, 143, 151, .34); border-radius: 50%; }
 .field-lines i:nth-child(3) { position: absolute; right: 27%; bottom: 6%; left: 27%; height: 19%; border: 1px solid rgba(134, 143, 151, .34); }
-.pitch-players { position: absolute; z-index: 2; inset: 56px 0 58px; }
+.pitch-players { position: absolute; z-index: 2; inset: 62px 0 64px; }
 .pitch-player { position: absolute; left: var(--x); top: var(--y); width: 96px; min-width: 0; transform: translate(-50%, -50%); text-align: center; }
 .player-rating { display: inline-flex; min-width: 34px; height: 19px; align-items: center; justify-content: center; gap: 3px; border: 1px solid var(--border-default); border-radius: var(--radius-control); padding: 0 7px; color: var(--fey-white); background: var(--surface-well); font-size: 10px; font-weight: 700; }
 .player-rating span { color: var(--focus-growth); font-size: 10px; }
@@ -337,7 +337,7 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .goal-minute { grid-column: 2; }
   .mvp-row { grid-template-columns: 1fr; }
   .pitch, .best-panel .pitch { height: 880px; }
-  .pitch-players { inset: 50px 0 52px; }
+  .pitch-players { inset: 58px 0 60px; }
   .pitch-player { width: 62px; }
   .player-rating { min-width: 30px; height: 18px; padding: 0 5px; font-size: 9px; }
   .attack-record { height: 14px; gap: 3px; font-size: 8px; }
