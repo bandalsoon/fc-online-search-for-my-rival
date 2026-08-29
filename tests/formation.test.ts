@@ -11,14 +11,14 @@ test("forward, wing and attacking-mid layers keep their depth and side semantics
   assert.equal(pitchPoint("LS", formation).y, pitchPoint("ST", formation).y);
   assert.equal(pitchPoint("RS", formation).y, pitchPoint("ST", formation).y);
   assert.equal(pitchPoint("CF", formation).y < pitchPoint("CAM", formation).y, true);
-  assert.deepEqual(pitchPoint("GK", formation), { x: 50, y: 97 });
+  assert.deepEqual(pitchPoint("GK", formation), { x: 50, y: 100 });
 });
 
 test("wing-backs stay on the back line in a four-back", () => {
   const formation = ["LWB", "LCB", "RCB", "RWB", "GK"];
   assert.equal(isThreeBack(formation), false);
-  assert.equal(pitchPoint("LWB", formation).y, 80);
-  assert.equal(pitchPoint("RWB", formation).y, 80);
+  assert.equal(pitchPoint("LWB", formation).y, 83.5);
+  assert.equal(pitchPoint("RWB", formation).y, 83.5);
 });
 
 test("three-back wing-backs sit outside the defensive midfield line", () => {
@@ -26,8 +26,8 @@ test("three-back wing-backs sit outside the defensive midfield line", () => {
   assert.equal(isThreeBack(formation), true);
   const ordered = ["LWB", "LDM", "CDM", "RDM", "RWB"].map((name) => pitchPoint(name, formation).x);
   assert.deepEqual([...ordered].sort((a, b) => a - b), ordered);
-  assert.equal(pitchPoint("LWB", formation).y, 64);
-  assert.equal(pitchPoint("RWB", formation).y, 64);
+  assert.equal(pitchPoint("LWB", formation).y, 67);
+  assert.equal(pitchPoint("RWB", formation).y, 67);
 });
 
 test("five-bucket formation labels use actual positions and omit zero buckets", () => {
@@ -39,7 +39,7 @@ test("five-bucket formation labels use actual positions and omit zero buckets", 
 test("shared positioning spreads full player composites without changing row depth", () => {
   const players = ["LWB", "LCB", "CB", "RCB", "LDM", "CDM", "RDM", "RWB", "GK"].map((positionName) => ({ positionName }));
   const positioned = positionedPlayers(players).filter(({ player }) => ["LWB", "LDM", "CDM", "RDM", "RWB"].includes(player.positionName));
-  assert.deepEqual(positioned.map((row) => row.y), [64, 64, 64, 64, 64]);
+  assert.deepEqual(positioned.map((row) => row.y), [67, 67, 67, 67, 67]);
   const ordered = [...positioned].sort((a, b) => a.x - b.x);
   for (let index = 1; index < ordered.length; index++) assert.ok(ordered[index].x - ordered[index - 1].x >= 20.25);
 });
@@ -64,7 +64,7 @@ test("required formations preserve side semantics, layer order and row safety", 
   }
 
   const layered = ["ST", "RF", "CAM", "CM", "CDM", "CB", "GK"].map((position) => pitchPoint(position, ["ST", "RF", "CAM", "CM", "CDM", "CB", "GK"]));
-  assert.deepEqual(layered.map(({ y }) => y), [4, 19, 34, 49, 64, 80, 97]);
+  assert.deepEqual(layered.map(({ y }) => y), [1, 17.5, 34, 50.5, 67, 83.5, 100]);
   assert.ok(pitchPoint("RF", ["LS", "RF"]).x > 50);
   assert.ok(pitchPoint("LS", ["LS", "RF"]).y < pitchPoint("RF", ["LS", "RF"]).y);
 });
