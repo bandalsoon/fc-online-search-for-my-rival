@@ -106,7 +106,7 @@ function TacticalLayout({ data, children }: { data: Archive; children: ReactNode
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
     const observer = new ResizeObserver(schedule);
     observer.observe(ruler.current!);
-    probes.current!.querySelectorAll(".pitch-player, .pitch-player *").forEach((el) => observer.observe(el));
+    probes.current!.querySelectorAll(".pitch-player").forEach((el) => observer.observe(el));
     probes.current!.addEventListener("load", schedule, true);
     probes.current!.addEventListener("error", schedule, true);
     window.addEventListener("resize", schedule);
