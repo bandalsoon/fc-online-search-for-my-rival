@@ -104,13 +104,17 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .section-head h3 svg { width: 18px; color: var(--focus-growth); }
 .section-head span { color: var(--text-secondary); font-size: 10px; }
 
-.overview-best { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.overview-best .panel { min-width: 0; }
+.tactical-layout { position: relative; container-type: inline-size; container-name: tactical; }
+.pitch-measure { position: absolute; inset: 0 0 auto; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.pitch-probes .pitch-player { position: relative; left: auto; top: auto; transform: none; }
+.overview-best { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.overview-best .panel { min-width: 0; margin-top: 0; }
+.best-panel .panel-head { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 8px; height: 82px; }
+.best-panel .panel-head p { max-width: none; padding-top: 0; text-align: left; }
 .best-panel.home { border-color: rgba(71, 159, 250, .34); }
 .best-panel.rival { border-color: rgba(255, 161, 108, .34); }
 
-.pitch { position: relative; overflow: hidden; height: 880px; border: 1px solid var(--fey-smoke); border-radius: var(--radius-card); background: repeating-linear-gradient(0deg, #0b0b0b 0, #0b0b0b 84px, #151515 84px, #151515 168px); }
-.best-panel .pitch { height: 880px; }
+.pitch { position: relative; margin-inline: auto; border: 1px solid var(--fey-smoke); border-radius: var(--radius-card); background: repeating-linear-gradient(0deg, #0b0b0b 0, #0b0b0b 84px, #151515 84px, #151515 168px); }
 .pitch::before { position: absolute; inset: 6%; border: 1px solid rgba(134, 143, 151, .34); content: ""; }
 .pitch-label { position: absolute; z-index: 3; top: 12px; left: 14px; display: flex; align-items: center; gap: 6px; color: var(--fey-mist); font-size: 10px; font-weight: 600; }
 .pitch-label svg { width: 14px; }
@@ -118,8 +122,8 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .field-lines i:nth-child(1) { position: absolute; top: 50%; right: 6%; left: 6%; border-top: 1px solid rgba(134, 143, 151, .34); }
 .field-lines i:nth-child(2) { position: absolute; top: calc(50% - 46px); left: 50%; width: 92px; height: 92px; transform: translateX(-50%); border: 1px solid rgba(134, 143, 151, .34); border-radius: 50%; }
 .field-lines i:nth-child(3) { position: absolute; right: 27%; bottom: 6%; left: 27%; height: 19%; border: 1px solid rgba(134, 143, 151, .34); }
-.pitch-players { position: absolute; z-index: 2; inset: 62px 0 64px; }
-.pitch-player { position: absolute; left: var(--x); top: var(--y); width: 96px; min-width: 0; transform: translate(-50%, -50%); text-align: center; }
+.pitch-players { position: absolute; z-index: 2; inset: 0; }
+.pitch-player { position: absolute; left: var(--x); top: var(--y); width: 96px; min-width: 0; transform: translate(-50%, -50%) scale(var(--scale, 1)) translate(var(--offset-x, 0px), var(--offset-y, 0px)); text-align: center; }
 .player-rating { display: inline-flex; min-width: 34px; height: 19px; align-items: center; justify-content: center; gap: 3px; border: 1px solid var(--border-default); border-radius: var(--radius-control); padding: 0 7px; color: var(--fey-white); background: var(--surface-well); font-size: 10px; font-weight: 700; }
 .player-rating span { color: var(--focus-growth); font-size: 10px; }
 .attack-record { display: flex; height: 14px; align-items: center; justify-content: center; gap: 4px; color: var(--fey-white); font-size: 8px; font-weight: 600; text-shadow: 0 1px 3px var(--fey-abyss); }
@@ -207,9 +211,9 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .mvp-row b { color: var(--fey-white); font-size: 12px; }
 .mvp-row small { grid-column: 1 / -1; color: var(--text-secondary); font-size: 10px; }
 
-.lineups { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 22px; }
+.lineups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 22px; }
 .lineups > section { min-width: 0; }
-.lineups h4 { display: flex; align-items: center; gap: 7px; overflow-wrap: anywhere; word-break: keep-all; }
+.lineups h4 { display: flex; min-height: 36px; align-items: center; gap: 7px; overflow-wrap: anywhere; word-break: keep-all; }
 .lineups h4 span { font-size: 10px; letter-spacing: .08em; }
 .lineups > section:first-child h4 span { color: var(--home-signal); }
 .lineups > section:last-child h4 span { color: var(--rival-ember); }
@@ -279,12 +283,13 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .duel { grid-template-columns: 1fr 84px 1fr; }
   .duelist { padding: 18px; }
   .duel-metrics { grid-template-columns: 1fr; }
-  .overview-best, .lineups { grid-template-columns: 1fr; }
   .records { grid-template-columns: repeat(2, 1fr); }
   .match-summary { grid-template-columns: 38px 145px 1fr 22px; }
 }
 
 @media (max-width: 560px) {
+  /* The legacy 320px body minimum overflows when a 320px viewport has a scrollbar. */
+  body:has(.tactical-layout .pitch) { min-width: 0; }
   .app main { width: calc(100% - 20px); padding-top: 14px; }
   header { margin-bottom: 12px; }
   .brand { gap: 8px; }
@@ -336,8 +341,6 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .goal-event.home .goal-card { text-align: right; }
   .goal-minute { grid-column: 2; }
   .mvp-row { grid-template-columns: 1fr; }
-  .pitch, .best-panel .pitch { height: 880px; }
-  .pitch-players { inset: 58px 0 60px; }
   .pitch-player { width: 62px; }
   .player-rating { min-width: 30px; height: 18px; padding: 0 5px; font-size: 9px; }
   .attack-record { height: 14px; gap: 3px; font-size: 8px; }
@@ -354,4 +357,10 @@ footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px
   .records article { min-height: 92px; padding: 10px; }
   footer { flex-direction: column; gap: 5px; }
 }
+
+/* Two 520px pitches, both card paddings/borders, and the shared 24px gap. */
+@container tactical (min-width: 1156px) {
+  .overview-best, .lineups { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
 
