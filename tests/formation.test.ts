@@ -74,7 +74,7 @@ test("required formations preserve side semantics, layer order and safety at all
     safe(result);
     for (const p of result.positioned) for (const q of result.positioned) {
       const a = pitchPoint(p.player.positionName, names), b = pitchPoint(q.player.positionName, names);
-      if (a.y < b.y) assert.ok(p.y < q.y);
+      if (a.y < b.y) assert.ok(q.y - p.y >= options.box.height * result.scale / 2 - 0.01);
       if (a.y === b.y) {
         assert.equal(p.y, q.y);
         if (a.x < b.x) assert.ok(p.x < q.x);
