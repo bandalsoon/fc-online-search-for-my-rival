@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Activity, BarChart3, CalendarDays, ChevronDown, Crosshair, Database, Handshake, RefreshCw, ShieldAlert, Shirt, Star, Swords, UserRound, Users } from "lucide-react";
 import type { Archive, ArchiveSummary, BestPlayer, LineupPlayer, Match, PlayerRanking, Side } from "./types";
-import { formationLabel, positionedPlayers } from "./formation";
+import { formationLabel, layoutPair, type LayoutOptions } from "./formation";
+import { measureComposite, type CompositeBounds } from "./pitch-measure";
 import { passCompletion, selectTeamMom } from "./match-detail";
 
 const HOME = "새로운성연합";
@@ -55,9 +56,9 @@ function Ranking({ title, players, kind }: { title: string; players: PlayerRanki
   return <section className="ranking"><div className="section-head"><h3>{kind === "goals" ? <Crosshair /> : <Handshake />}{title}</h3><span>TOP 8</span></div><div>{players.map((player, index) => <article className={`player-card rank-${index + 1}`} key={playerKey(player)}><b className="rank">{index + 1}</b><Face player={player} /><div className="player-copy"><div><span>{player.season}</span><em>+{player.grade}</em></div><strong>{player.name}</strong><small>{player.appearances}경기 · {player.goals}골 · {player.assists}도움 · {player.attackPointsPerMatch.toFixed(2)}P</small></div><strong className="value">{player[kind]}<i>{kind === "goals" ? "골" : "도움"}</i></strong></article>)}</div></section>;
 }
 
-function PlayerMarker({ player, best = false, side, mom = false, x, y }: { player: LineupPlayer | BestPlayer; best?: boolean; side: Side; mom?: boolean; x: number; y: number }) {
+function PlayerMarker({ player, best = false, side, mom = false, x = 0, y = 0, scale = 1, bounds }: { player: LineupPlayer | BestPlayer; best?: boolean; side: Side; mom?: boolean; x?: number; y?: number; scale?: number; bounds?: CompositeBounds }) {
   const rating = best ? (player as BestPlayer).averageRating : player.rating;
-  return <div className={`pitch-player ${side} ${mom ? "mom" : ""}`} style={{ "--x": `${x}%`, "--y": `${y}%` } as CSSProperties} data-position={player.positionName} data-x={x} data-y={y}>
+  return <div className={`pitch-player ${side} ${mom ? "mom" : ""}`} style={{ "--x": `${x}px`, "--y": `${y}px`, "--scale": scale, "--offset-x": `${-(bounds?.offsetX || 0)}px`, "--offset-y": `${-(bounds?.offsetY || 0)}px` } as CSSProperties} data-position={player.positionName} data-x={x} data-y={y} data-scale={scale}>
     <div className="player-rating">{mom && <span aria-label="팀별 MOM">★</span>}{rating ?? "—"}</div>
     {(player.goals > 0 || player.assists > 0) && <div className="attack-record">{player.goals > 0 && <span>⚽ {player.goals}</span>}{player.goals > 0 && player.assists > 0 && <i />}{player.assists > 0 && <span>👟 {player.assists}</span>}</div>}
     <div className="face-wrap"><Face player={player} round /><span>{player.positionName}</span></div>
@@ -65,10 +66,78 @@ function PlayerMarker({ player, best = false, side, mom = false, x, y }: { playe
   </div>;
 }
 
-function Pitch({ players, side, best = false, mom }: { players: Array<LineupPlayer | BestPlayer>; side: Side; best?: boolean; mom?: LineupPlayer | null }) {
+type PitchPlayer = LineupPlayer | BestPlayer;
+type MarkerSample = { player: PitchPlayer; best: boolean; mom: boolean };
+function markerSignature({ player: p, best, mom }: MarkerSample) {
+  return JSON.stringify([p.name, p.positionName, p.grade, p.salary, p.seasonIcon ? "sprite" : p.season, best ? (p as BestPlayer).averageRating : p.rating, p.goals, p.assists, mom]);
+}
+const PitchContext = createContext<{ options: LayoutOptions; bounds: Map<string, CompositeBounds>; ready: boolean }>({ options: { width: 518, height: 758, box: { width: 100, height: 130 }, mobile: false }, bounds: new Map(), ready: false });
+
+function TacticalLayout({ data, children }: { data: Archive; children: ReactNode }) {
+  const ruler = useRef<HTMLDivElement>(null), probes = useRef<HTMLDivElement>(null);
+  const pairs = useMemo(() => [[data.bestXi.home.players, data.bestXi.rival.players], ...data.matches.map((m) => [m.home.lineup, m.rival.lineup])], [data]);
+  const samples = useMemo(() => {
+    const unique = new Map<string, MarkerSample>();
+    pairs.forEach((pair, index) => pair.forEach((players) => {
+      const mom = index ? selectTeamMom(players) : null;
+      players.forEach((player) => {
+        const sample = { player, best: index === 0, mom: !!mom && playerKey(mom) === playerKey(player) };
+        unique.set(markerSignature(sample), sample);
+      });
+    }));
+    return [...unique];
+  }, [pairs]);
+  const [state, setState] = useState(useContext(PitchContext));
+  useLayoutEffect(() => {
+    let frame = 0, disposed = false;
+    const measure = () => {
+      if (disposed || !ruler.current || !probes.current) return;
+      const mobile = window.matchMedia("(max-width: 560px)").matches;
+      const width = Math.min(mobile ? 390 : 520, ruler.current.getBoundingClientRect().width) - 2;
+      if (width <= 0) return;
+      const bounds = new Map<string, CompositeBounds>();
+      probes.current.querySelectorAll<HTMLElement>(".pitch-player").forEach((el, i) => bounds.set(samples[i][0], measureComposite(el)));
+      const boxes = [...bounds.values()];
+      const box = { width: Math.ceil(Math.max(1, ...boxes.map((b) => b.width))), height: Math.ceil(Math.max(1, ...boxes.map((b) => b.height))) };
+      const options: LayoutOptions = { width, height: mobile ? (width + 2) * 16 / 9 - 2 : 758, box, mobile, gap: window.innerWidth < 360 ? 6 : mobile ? 8 : 12 };
+      options.height = Math.ceil(Math.max(options.height, ...pairs.map(([home, rival]) => layoutPair(home, rival, options).height)));
+      setState((previous) => JSON.stringify([previous.options, [...previous.bounds]]) === JSON.stringify([options, [...bounds]]) ? previous : { options, bounds, ready: true });
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(ruler.current!);
+    probes.current!.querySelectorAll(".pitch-player").forEach((el) => observer.observe(el));
+    probes.current!.addEventListener("load", schedule, true);
+    probes.current!.addEventListener("error", schedule, true);
+    window.addEventListener("resize", schedule);
+    document.fonts.addEventListener("loadingdone", schedule);
+    void document.fonts.ready.then(schedule);
+    measure();
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      probes.current?.removeEventListener("load", schedule, true);
+      probes.current?.removeEventListener("error", schedule, true);
+      window.removeEventListener("resize", schedule);
+      document.fonts.removeEventListener("loadingdone", schedule);
+    };
+  }, [samples, pairs]);
+  return <PitchContext.Provider value={state}><div className="tactical-layout">
+    <div className="pitch-measure" aria-hidden="true" inert><div className="panel"><div className="match-detail"><div ref={ruler} /></div></div><div className="pitch-probes" ref={probes}>{samples.map(([key, sample]) => <PlayerMarker key={key} {...sample} side="home" />)}</div></div>
+    {children}
+  </div></PitchContext.Provider>;
+}
+
+function Pitch({ players, opponents, side, best = false, mom }: { players: PitchPlayer[]; opponents: PitchPlayer[]; side: Side; best?: boolean; mom?: LineupPlayer | null }) {
+  const { options, bounds, ready } = useContext(PitchContext);
+  const layout = useMemo(() => layoutPair(players, opponents, options).home, [players, opponents, options]);
   const formation = displayFormation(players);
   const momKey = mom ? playerKey(mom) : null;
-  return <div className={`pitch ${side}`}><div className="pitch-label"><Shirt />{formation}</div><div className="field-lines"><i /><i /><i /></div><div className="pitch-players">{positionedPlayers(players).map(({ player, x, y }, index) => <PlayerMarker key={`${player.position}:${playerKey(player)}:${index}`} player={player} best={best} side={side} mom={!best && momKey === playerKey(player)} x={x} y={y} />)}</div></div>;
+  return <div className={`pitch ${side}`} style={{ width: options.width + 2, height: options.height + 2, visibility: ready ? undefined : "hidden" }} data-scale={layout.scale} data-readability-review={layout.readabilityReview} data-gap={options.gap} data-box={`${options.box.width}x${options.box.height}`}><div className="pitch-label"><Shirt />{formation}</div><div className="field-lines"><i /><i /><i /></div><div className="pitch-players">{layout.positioned.map(({ player, x, y, scale }, index) => {
+    const isMom = !best && momKey === playerKey(player);
+    return <PlayerMarker key={`${player.position}:${playerKey(player)}:${index}`} player={player} best={best} side={side} mom={isMom} x={x} y={y} scale={scale} bounds={bounds.get(markerSignature({ player, best, mom: isMom }))} />;
+  })}</div></div>;
 }
 
 type MetricRow = { label: string; home: number | null; rival: number | null; unit: string; scale: "sum" | "percent" };
@@ -109,7 +178,7 @@ function MatchDetail({ match }: { match: Match }) {
   const rivalMom = selectTeamMom(match.rival.lineup);
   const homeFormation = displayFormation(match.home.lineup);
   const rivalFormation = displayFormation(match.rival.lineup);
-  return <div className="match-detail"><MetricComparison match={match} /><GoalTimeline goals={match.goals} /><TeamMoms match={match} home={homeMom} rival={rivalMom} /><div className="lineups"><section><h4><span>HOME</span>{match.home.nickname} · {homeFormation}</h4><Pitch players={match.home.lineup} side="home" mom={homeMom} /></section><section><h4><span>RIVAL</span>{match.rival.nickname} · {rivalFormation}</h4><Pitch players={match.rival.lineup} side="rival" mom={rivalMom} /></section></div></div>;
+  return <div className="match-detail"><MetricComparison match={match} /><GoalTimeline goals={match.goals} /><TeamMoms match={match} home={homeMom} rival={rivalMom} /><div className="lineups"><section><h4><span>HOME</span>{match.home.nickname} · {homeFormation}</h4><Pitch players={match.home.lineup} opponents={match.rival.lineup} side="home" mom={homeMom} /></section><section><h4><span>RIVAL</span>{match.rival.nickname} · {rivalFormation}</h4><Pitch players={match.rival.lineup} opponents={match.home.lineup} side="rival" mom={rivalMom} /></section></div></div>;
 }
 
 function MatchRow({ match }: { match: Match }) {
@@ -122,7 +191,7 @@ function Overview({ data }: { data: Archive }) {
   return <><Duel summary={data.summary} data={data} /><section className="milestone"><div><span>확인된 첫 맞대결</span><b>{date(data.summary.oldestMatchDate)}</b></div><i /><div><span>최근 경기</span><b>{date(data.summary.latestMatchDate)}</b></div></section><div className="overview-best">{SIDES.map((side) => {
     const best = data.bestXi[side];
     const formation = displayFormation(best.players);
-    return <section className={`panel best-panel ${side}`} key={side}><div className="panel-head"><div><span>BEST XI</span><h2>{data.users[side].nickname} BEST XI</h2></div><p>최다 사용 {formation} · {best.sampleMatches}경기</p></div><Pitch players={best.players} side={side} best /></section>;
+    return <section className={`panel best-panel ${side}`} key={side}><div className="panel-head"><div><span>BEST XI</span><h2>{data.users[side].nickname} BEST XI</h2></div><p>최다 사용 {formation} · {best.sampleMatches}경기</p></div><Pitch players={best.players} opponents={data.bestXi[side === "home" ? "rival" : "home"].players} side={side} best /></section>;
   })}</div></>;
 }
 
@@ -164,6 +233,7 @@ export default function App() {
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  return <div className="app"><main><header><div className="brand"><Swords /><div><strong>FC ONLINE RIVAL ARCHIVE</strong><span>새로운성연합 vs 피버슛</span></div></div><button className="refresh" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} />새로고침</button></header><nav className="tabs" aria-label="주요 메뉴">{TABS.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><Icon />{label}</button>)}</nav>{error ? <section className="error"><ShieldAlert /><div><h2>기록을 불러오지 못했어요</h2><p>{error}</p></div><button onClick={() => void load()}>다시 시도</button></section> : loading || !data ? <div className="loading"><Activity className="spin" /><h2>라이벌 기록 동기화 중</h2><p>저장된 아카이브와 Nexon API의 새 경기를 확인하고 있습니다.</p></div> : <>{tab === "overview" && <Overview data={data} />}{tab === "matches" && <Matches data={data} />}{tab === "players" && <Players data={data} side={side} setSide={setSide} />}{tab === "analysis" && <Analysis data={data} />}<details className="diagnostics"><summary><Database />데이터 정보</summary><p>공식 API가 현재 반환하는 범위와 검증해 영구 보관한 실제 맞대결 기록만 사용합니다.</p></details><footer><span>Nexon Open API가 현재 반환하는 범위의 실제 기록만 사용합니다.</span><span>{UI_VERSION} · 데이터 {data.version} · {date(data.updatedAt, true)}</span></footer></>}</main></div>;
+  return <div className="app"><main><header><div className="brand"><Swords /><div><strong>FC ONLINE RIVAL ARCHIVE</strong><span>새로운성연합 vs 피버슛</span></div></div><button className="refresh" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} />새로고침</button></header><nav className="tabs" aria-label="주요 메뉴">{TABS.map(({ id, label, icon: Icon }) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><Icon />{label}</button>)}</nav>{error ? <section className="error"><ShieldAlert /><div><h2>기록을 불러오지 못했어요</h2><p>{error}</p></div><button onClick={() => void load()}>다시 시도</button></section> : loading || !data ? <div className="loading"><Activity className="spin" /><h2>라이벌 기록 동기화 중</h2><p>저장된 아카이브와 Nexon API의 새 경기를 확인하고 있습니다.</p></div> : <TacticalLayout data={data}>{tab === "overview" && <Overview data={data} />}{tab === "matches" && <Matches data={data} />}{tab === "players" && <Players data={data} side={side} setSide={setSide} />}{tab === "analysis" && <Analysis data={data} />}<details className="diagnostics"><summary><Database />데이터 정보</summary><p>공식 API가 현재 반환하는 범위와 검증해 영구 보관한 실제 맞대결 기록만 사용합니다.</p></details><footer><span>Nexon Open API가 현재 반환하는 범위의 실제 기록만 사용합니다.</span><span>{UI_VERSION} · 데이터 {data.version} · {date(data.updatedAt, true)}</span></footer></TacticalLayout>}</main></div>;
 }
+
 
