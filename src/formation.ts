@@ -82,7 +82,10 @@ export function layoutPlayers<T extends { positionName: string }>(players: T[], 
   // Seven ordered layers form a tiny DAG. Only X-overlapping boxes need full Y clearance.
   const distances = LAYERS.map(() => Array<number>(7).fill(0));
   for (let a = 0; a < 7; a++) for (let b = a + 1; b < 7; b++) {
-    distances[a][b] = rows[a].some((p) => rows[b].some((q) => Math.abs(x[p.index] - x[q.index]) < bw + gap - 0.001)) ? bh + gap : b - a;
+    const overlapping = rows[a].some((p) => rows[b].some((q) => Math.abs(x[p.index] - x[q.index]) < bw + gap - 0.001));
+    // A 1px ordering is mathematically distinct but visually the same row.
+    // Half a composite per semantic layer keeps depth without imposing full clearance on disjoint X.
+    distances[a][b] = Math.max((b - a) * bh / 2, overlapping ? bh + gap : 0);
   }
   const top = 32 + edge; // Also reserve the existing pitch label, not just the outer edge.
   const earliest = LAYERS.map(() => top + bh / 2);
